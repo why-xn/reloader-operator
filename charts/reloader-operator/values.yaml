@@ -1,0 +1,265 @@
+# Default values for reloader-operator
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+# Number of operator replicas
+replicaCount: 1
+
+image:
+  # Container image repository
+  repository: stakater/reloader-operator
+  # Image pull policy
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion
+  tag: ""
+
+# Image pull secrets for private registries
+imagePullSecrets: []
+
+# Override the name of the chart
+nameOverride: ""
+# Override the full name of the resources
+fullnameOverride: ""
+
+serviceAccount:
+  # Specifies whether a service account should be created
+  create: true
+  # Annotations to add to the service account
+  annotations: {}
+  # The name of the service account to use.
+  # If not set and create is true, a name is generated using the fullname template
+  name: ""
+
+rbac:
+  # Specifies whether RBAC resources should be created
+  create: true
+  # Annotations to add to the ClusterRole and ClusterRoleBinding
+  annotations: {}
+
+# Pod annotations
+podAnnotations: {}
+
+# Pod security context
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 65532
+  fsGroup: 65532
+  seccompProfile:
+    type: RuntimeDefault
+
+# Container security context
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+    - ALL
+  readOnlyRootFilesystem: true
+
+# Service configuration for metrics endpoint
+service:
+  # Service type
+  type: ClusterIP
+  # Service port for metrics
+  port: 8080
+  # Annotations to add to the service
+  annotations: {}
+
+# Resource requests and limits
+resources:
+  limits:
+    cpu: 500m
+    memory: 256Mi
+  requests:
+    cpu: 100m
+    memory: 64Mi
+
+# Liveness probe configuration
+livenessProbe:
+  httpGet:
+    path: /healthz
+    port: 8081
+  initialDelaySeconds: 15
+  periodSeconds: 20
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Readiness probe configuration
+readinessProbe:
+  httpGet:
+    path: /readyz
+    port: 8081
+  initialDelaySeconds: 5
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+# Node selector for pod assignment
+nodeSelector: {}
+
+# Tolerations for pod assignment
+tolerations: []
+
+# Affinity for pod assignment
+affinity: {}
+
+# Priority class name for pods
+priorityClassName: ""
+
+# Operator configuration
+operator:
+  # Log level (debug, info, error)
+  logLevel: info
+  # Enable leader election for high availability
+  leaderElection:
+    enabled: true
+    # Lease duration for leader election
+    leaseDuration: 15s
+    # Renew deadline for leader election
+    renewDeadline: 10s
+    # Retry period for leader election
+    retryPeriod: 2s
+  # Namespaces to watch (empty = all namespaces)
+  watchNamespaces: []
+  # Example:
+  # watchNamespaces:
+  #   - default
+  #   - production
+
+  # Sync period for reconciliation
+  syncPeriod: 10m
+
+  # Maximum concurrent reconciles
+  maxConcurrentReconciles: 1
+
+# Metrics configuration
+metrics:
+  # Enable Prometheus metrics
+  enabled: true
+  # Service port for metrics
+  port: 8080
+  # Path for metrics endpoint
+  path: /metrics
+
+# ServiceMonitor for Prometheus Operator
+serviceMonitor:
+  # Create ServiceMonitor resource
+  enabled: false
+  # Additional labels for ServiceMonitor
+  additionalLabels: {}
+  # Example:
+  # additionalLabels:
+  #   prometheus: kube-prometheus
+  # Scrape interval
+  interval: 30s
+  # Scrape timeout
+  scrapeTimeout: 10s
+  # Namespace where ServiceMonitor will be created
+  # If empty, it will be created in the same namespace as the operator
+  namespace: ""
+
+# CRD installation
+crds:
+  # Install CRDs as part of the chart
+  install: true
+  # Keep CRDs on chart uninstall
+  keep: true
+  # Annotations for CRD
+  annotations: {}
+
+# Global alert configuration (can be overridden per ReloaderConfig)
+alerts:
+  # Enable alerts globally
+  enabled: false
+  # Slack configuration
+  slack:
+    enabled: false
+    # Webhook URL (direct or from secret)
+    webhookURL: ""
+    # Reference to secret containing webhook URL
+    webhookURLSecret:
+      name: ""
+      key: ""
+    # Default channel (optional, overrides webhook default)
+    channel: ""
+    # Username for messages
+    username: "Reloader Operator"
+    # Icon for messages
+    icon: ":robot_face:"
+
+  # Microsoft Teams configuration
+  teams:
+    enabled: false
+    # Webhook URL (direct or from secret)
+    webhookURL: ""
+    # Reference to secret containing webhook URL
+    webhookURLSecret:
+      name: ""
+      key: ""
+
+  # Google Chat configuration
+  gchat:
+    enabled: false
+    # Webhook URL (direct or from secret)
+    webhookURL: ""
+    # Reference to secret containing webhook URL
+    webhookURLSecret:
+      name: ""
+      key: ""
+
+# Extra environment variables
+extraEnv: []
+# Example:
+# extraEnv:
+#   - name: CUSTOM_VAR
+#     value: "custom-value"
+#   - name: SECRET_VAR
+#     valueFrom:
+#       secretKeyRef:
+#         name: my-secret
+#         key: my-key
+
+# Extra volumes
+extraVolumes: []
+# Example:
+# extraVolumes:
+#   - name: config
+#     configMap:
+#       name: my-config
+
+# Extra volume mounts
+extraVolumeMounts: []
+# Example:
+# extraVolumeMounts:
+#   - name: config
+#     mountPath: /etc/config
+#     readOnly: true
+
+# Pod disruption budget
+podDisruptionBudget:
+  enabled: false
+  # minAvailable: 1
+  # maxUnavailable: 1
+
+# Horizontal pod autoscaler
+autoscaling:
+  enabled: false
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 80
+  targetMemoryUtilizationPercentage: 80
+
+# Network policy
+networkPolicy:
+  enabled: false
+  # Ingress rules
+  ingress: []
+  # Egress rules
+  egress: []
+  # Pod selector
+  podSelector: {}
+
+# Additional labels to add to all resources
+commonLabels: {}
+
+# Additional annotations to add to all resources
+commonAnnotations: {}

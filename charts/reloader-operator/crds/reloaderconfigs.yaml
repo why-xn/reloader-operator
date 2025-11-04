@@ -1,0 +1,531 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.19.0
+  name: reloaderconfigs.reloader.stakater.com
+spec:
+  group: reloader.stakater.com
+  names:
+    kind: ReloaderConfig
+    listKind: ReloaderConfigList
+    plural: reloaderconfigs
+    shortNames:
+    - rc
+    - rlc
+    singular: reloaderconfig
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - description: Reload strategy
+      jsonPath: .spec.reloadStrategy
+      name: Strategy
+      type: string
+    - description: Number of target workloads
+      jsonPath: .spec.targets[*]
+      name: Targets
+      type: integer
+    - description: Total reloads triggered
+      jsonPath: .status.reloadCount
+      name: Reloads
+      type: integer
+    - description: Last reload time
+      jsonPath: .status.lastReloadTime
+      name: Last Reload
+      type: date
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: ReloaderConfig is the Schema for the reloaderconfigs API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: spec defines the desired state of ReloaderConfig
+            properties:
+              alerts:
+                description: Alerts configures alerting when reloads occur
+                properties:
+                  customWebhook:
+                    description: Generic webhook configuration for custom integrations
+                    properties:
+                      secretRef:
+                        description: |-
+                          SecretRef references a Secret containing the webhook URL
+                          Use this instead of URL for sensitive webhooks
+                          The secret should have a key named "url"
+                        properties:
+                          key:
+                            default: url
+                            description: Key in the Secret
+                            type: string
+                          name:
+                            description: Name of the Secret
+                            type: string
+                          namespace:
+                            description: Namespace of the Secret (defaults to ReloaderConfig's
+                              namespace)
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      url:
+                        description: URL is the webhook endpoint
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  googleChat:
+                    description: Google Chat webhook configuration
+                    properties:
+                      secretRef:
+                        description: |-
+                          SecretRef references a Secret containing the webhook URL
+                          Use this instead of URL for sensitive webhooks
+                          The secret should have a key named "url"
+                        properties:
+                          key:
+                            default: url
+                            description: Key in the Secret
+                            type: string
+                          name:
+                            description: Name of the Secret
+                            type: string
+                          namespace:
+                            description: Namespace of the Secret (defaults to ReloaderConfig's
+                              namespace)
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      url:
+                        description: URL is the webhook endpoint
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  slack:
+                    description: Slack webhook configuration
+                    properties:
+                      secretRef:
+                        description: |-
+                          SecretRef references a Secret containing the webhook URL
+                          Use this instead of URL for sensitive webhooks
+                          The secret should have a key named "url"
+                        properties:
+                          key:
+                            default: url
+                            description: Key in the Secret
+                            type: string
+                          name:
+                            description: Name of the Secret
+                            type: string
+                          namespace:
+                            description: Namespace of the Secret (defaults to ReloaderConfig's
+                              namespace)
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      url:
+                        description: URL is the webhook endpoint
+                        type: string
+                    required:
+                    - url
+                    type: object
+                  teams:
+                    description: Microsoft Teams webhook configuration
+                    properties:
+                      secretRef:
+                        description: |-
+                          SecretRef references a Secret containing the webhook URL
+                          Use this instead of URL for sensitive webhooks
+                          The secret should have a key named "url"
+                        properties:
+                          key:
+                            default: url
+                            description: Key in the Secret
+                            type: string
+                          name:
+                            description: Name of the Secret
+                            type: string
+                          namespace:
+                            description: Namespace of the Secret (defaults to ReloaderConfig's
+                              namespace)
+                            type: string
+                        required:
+                        - name
+                        type: object
+                      url:
+                        description: URL is the webhook endpoint
+                        type: string
+                    required:
+                    - url
+                    type: object
+                type: object
+              autoReloadAll:
+                description: |-
+                  AutoReloadAll enables automatic reloading for all resources referenced by the target workloads
+                  When true, any ConfigMap or Secret referenced in volumes or env will trigger reload
+                type: boolean
+              ignoreResources:
+                description: IgnoreResources specifies resources that should be ignored
+                  even if they match watch criteria
+                items:
+                  description: ResourceReference identifies a specific Kubernetes
+                    resource
+                  properties:
+                    kind:
+                      description: Kind of the resource (Secret or ConfigMap)
+                      enum:
+                      - Secret
+                      - ConfigMap
+                      type: string
+                    name:
+                      description: Name of the resource
+                      type: string
+                    namespace:
+                      description: Namespace of the resource
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  type: object
+                type: array
+              matchLabels:
+                additionalProperties:
+                  type: string
+                description: |-
+                  MatchLabels enables label-based matching for resources
+                  Resources must have matching labels to trigger reload
+                type: object
+              reloadOnCreate:
+                description: ReloadOnCreate triggers reload when watched resources
+                  are created
+                type: boolean
+              reloadOnDelete:
+                description: ReloadOnDelete triggers reload when watched resources
+                  are deleted
+                type: boolean
+              reloadStrategy:
+                default: env-vars
+                description: |-
+                  ReloadStrategy specifies how to trigger rolling updates
+                  Valid values are: "env-vars" (default), "annotations"
+                  - env-vars: Updates a dummy environment variable to trigger pod restart
+                  - annotations: Updates pod template annotations (better for GitOps)
+                enum:
+                - env-vars
+                - annotations
+                type: string
+              targets:
+                description: Targets specifies which workloads should be reloaded
+                  when watched resources change
+                items:
+                  description: TargetWorkload defines a workload that should be reloaded
+                  properties:
+                    kind:
+                      description: Kind of the workload (Deployment, StatefulSet,
+                        DaemonSet, DeploymentConfig, Rollout)
+                      enum:
+                      - Deployment
+                      - StatefulSet
+                      - DaemonSet
+                      - DeploymentConfig
+                      - Rollout
+                      - CronJob
+                      type: string
+                    name:
+                      description: Name of the workload
+                      type: string
+                    namespace:
+                      description: Namespace of the workload (defaults to ReloaderConfig's
+                        namespace)
+                      type: string
+                    pausePeriod:
+                      description: |-
+                        PausePeriod prevents multiple reloads within this duration (e.g., "5m", "1h")
+                        Useful to avoid cascading reloads when multiple resources change
+                      pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
+                      type: string
+                    reloadStrategy:
+                      description: ReloadStrategy overrides the global reload strategy
+                        for this specific workload
+                      enum:
+                      - env-vars
+                      - annotations
+                      type: string
+                  required:
+                  - kind
+                  - name
+                  type: object
+                type: array
+              watchedResources:
+                description: WatchedResources specifies which Secrets and ConfigMaps
+                  to watch for changes
+                properties:
+                  configMaps:
+                    description: ConfigMaps is a list of ConfigMap names to watch
+                    items:
+                      type: string
+                    type: array
+                  namespaceSelector:
+                    description: NamespaceSelector allows watching resources across
+                      namespaces
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  resourceSelector:
+                    description: ResourceSelector allows filtering resources by labels
+                    properties:
+                      matchExpressions:
+                        description: matchExpressions is a list of label selector
+                          requirements. The requirements are ANDed.
+                        items:
+                          description: |-
+                            A label selector requirement is a selector that contains values, a key, and an operator that
+                            relates the key and values.
+                          properties:
+                            key:
+                              description: key is the label key that the selector
+                                applies to.
+                              type: string
+                            operator:
+                              description: |-
+                                operator represents a key's relationship to a set of values.
+                                Valid operators are In, NotIn, Exists and DoesNotExist.
+                              type: string
+                            values:
+                              description: |-
+                                values is an array of string values. If the operator is In or NotIn,
+                                the values array must be non-empty. If the operator is Exists or DoesNotExist,
+                                the values array must be empty. This array is replaced during a strategic
+                                merge patch.
+                              items:
+                                type: string
+                              type: array
+                              x-kubernetes-list-type: atomic
+                          required:
+                          - key
+                          - operator
+                          type: object
+                        type: array
+                        x-kubernetes-list-type: atomic
+                      matchLabels:
+                        additionalProperties:
+                          type: string
+                        description: |-
+                          matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels
+                          map is equivalent to an element of matchExpressions, whose key field is "key", the
+                          operator is "In", and the values array contains only "value". The requirements are ANDed.
+                        type: object
+                    type: object
+                    x-kubernetes-map-type: atomic
+                  secrets:
+                    description: Secrets is a list of Secret names to watch
+                    items:
+                      type: string
+                    type: array
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of ReloaderConfig
+            properties:
+              conditions:
+                description: |-
+                  conditions represent the current state of the ReloaderConfig resource.
+                  Each condition has a unique type and reflects the status of a specific aspect of the resource.
+
+                  Standard condition types include:
+                  - "Available": the resource is fully functional
+                  - "Progressing": the resource is being created or updated
+                  - "Degraded": the resource failed to reach or maintain its desired state
+
+                  The status of each condition is one of True, False, or Unknown.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              lastReloadTime:
+                description: LastReloadTime is the timestamp of the most recent reload
+                  triggered
+                format: date-time
+                type: string
+              observedGeneration:
+                description: ObservedGeneration reflects the generation of the most
+                  recently observed ReloaderConfig
+                format: int64
+                type: integer
+              reloadCount:
+                description: ReloadCount is the total number of reloads triggered
+                  by this configuration
+                format: int64
+                type: integer
+              targetStatus:
+                description: TargetStatus tracks the status of each target workload
+                items:
+                  description: TargetWorkloadStatus tracks the reload status of a
+                    specific workload
+                  properties:
+                    kind:
+                      description: Kind of the workload
+                      type: string
+                    lastError:
+                      description: LastError contains the error message if the last
+                        reload failed
+                      type: string
+                    lastReloadTime:
+                      description: LastReloadTime is when this workload was last reloaded
+                      format: date-time
+                      type: string
+                    name:
+                      description: Name of the workload
+                      type: string
+                    namespace:
+                      description: Namespace of the workload
+                      type: string
+                    pausedUntil:
+                      description: PausedUntil indicates when the pause period ends
+                      format: date-time
+                      type: string
+                    reloadCount:
+                      description: ReloadCount is the number of times this workload
+                        has been reloaded
+                      format: int64
+                      type: integer
+                  required:
+                  - kind
+                  - name
+                  - namespace
+                  type: object
+                type: array
+              watchedResourceHashes:
+                additionalProperties:
+                  type: string
+                description: |-
+                  WatchedResourceHashes tracks the current hash of watched resources
+                  Key format: "namespace/kind/name"
+                  Value: SHA256 hash of resource data
+                type: object
+            type: object
+        required:
+        - spec
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

@@ -1,0 +1,38 @@
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  labels:
+    app.kubernetes.io/name: reloader-operator
+    app.kubernetes.io/managed-by: kustomize
+  name: reloaderconfig-sample
+  namespace: default
+spec:
+  # Watch specific Secrets and ConfigMaps
+  watchedResources:
+    secrets:
+      - db-credentials
+      - api-keys
+    configMaps:
+      - app-config
+      - feature-flags
+
+  # Target workloads to reload when watched resources change
+  targets:
+    - kind: Deployment
+      name: web-app
+      reloadStrategy: env-vars
+      pausePeriod: 5m
+
+    - kind: StatefulSet
+      name: database
+      reloadStrategy: annotations
+
+  # Global reload strategy (can be overridden per target)
+  reloadStrategy: env-vars
+
+  # Alert configuration
+  alerts:
+    slack:
+      secretRef:
+        name: slack-webhook
+        key: url

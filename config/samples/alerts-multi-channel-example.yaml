@@ -1,0 +1,75 @@
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: reloader-multi-channel-alerts
+  namespace: production
+spec:
+  # Watch critical resources
+  watchedResources:
+    secrets:
+      - database-password
+      - api-gateway-keys
+      - service-account-token
+    configMaps:
+      - app-configuration
+      - feature-flags
+
+  # Target critical workloads
+  targets:
+    - kind: Deployment
+      name: api-gateway
+      reloadStrategy: annotations
+      pausePeriod: 5m
+
+    - kind: StatefulSet
+      name: database-proxy
+      reloadStrategy: env-vars
+      pausePeriod: 10m
+
+    - kind: DaemonSet
+      name: security-agent
+      reloadStrategy: env-vars
+      pausePeriod: 3m
+
+  reloadStrategy: env-vars
+  reloadOnCreate: true
+  reloadOnDelete: false
+
+  # Multiple alert channels - alerts sent to all configured channels
+  alerts:
+    # Slack for team notifications
+    slack:
+      secretRef:
+        name: alert-webhooks
+        key: slack-url
+
+    # Teams for management notifications
+    teams:
+      secretRef:
+        name: alert-webhooks
+        key: teams-url
+
+    # Google Chat for ops team
+    googleChat:
+      secretRef:
+        name: alert-webhooks
+        key: gchat-url
+
+    # Custom webhook for integration with monitoring system
+    customWebhook:
+      secretRef:
+        name: alert-webhooks
+        key: custom-url
+---
+# Centralized secret for all webhook URLs
+apiVersion: v1
+kind: Secret
+metadata:
+  name: alert-webhooks
+  namespace: production
+type: Opaque
+stringData:
+  slack-url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+  teams-url: "https://outlook.office.com/webhook/YOUR/TEAMS/WEBHOOK"
+  gchat-url: "https://chat.googleapis.com/v1/spaces/YOUR/messages?key=KEY&token=TOKEN"
+  custom-url: "https://your-monitoring-system.com/api/webhooks/reloader"

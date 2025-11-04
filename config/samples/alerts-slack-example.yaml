@@ -1,0 +1,47 @@
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: reloader-with-slack-alerts
+  namespace: default
+spec:
+  # Watch specific secrets and configmaps
+  watchedResources:
+    secrets:
+      - database-credentials
+      - api-keys
+    configMaps:
+      - app-config
+
+  # Target workloads to reload
+  targets:
+    - kind: Deployment
+      name: backend-api
+      reloadStrategy: env-vars
+
+    - kind: Deployment
+      name: frontend-app
+      reloadStrategy: annotations
+
+  # Reload strategy (default for all targets if not specified)
+  reloadStrategy: env-vars
+
+  # Alert configuration - Slack
+  alerts:
+    slack:
+      # Option 1: Direct webhook URL (not recommended for production)
+      url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+
+      # Option 2: Reference a secret (recommended)
+      # secretRef:
+      #   name: slack-webhook-secret
+      #   key: url  # defaults to "url" if not specified
+---
+# Example secret for storing Slack webhook URL
+apiVersion: v1
+kind: Secret
+metadata:
+  name: slack-webhook-secret
+  namespace: default
+type: Opaque
+stringData:
+  url: "https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"

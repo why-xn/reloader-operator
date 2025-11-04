@@ -1,0 +1,27 @@
+{{- if and .Values.metrics.enabled .Values.serviceMonitor.enabled -}}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "reloader-operator.fullname" . }}
+  namespace: {{ include "reloader-operator.serviceMonitorNamespace" . }}
+  labels:
+    {{- include "reloader-operator.labels" . | nindent 4 }}
+    {{- with .Values.serviceMonitor.additionalLabels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  endpoints:
+  - path: {{ .Values.metrics.path }}
+    port: metrics
+    interval: {{ .Values.serviceMonitor.interval }}
+    scrapeTimeout: {{ .Values.serviceMonitor.scrapeTimeout }}
+  selector:
+    matchLabels:
+      {{- include "reloader-operator.selectorLabels" . | nindent 6 }}
+      control-plane: controller-manager
+  {{- if ne (include "reloader-operator.serviceMonitorNamespace" .) .Release.Namespace }}
+  namespaceSelector:
+    matchNames:
+    - {{ .Release.Namespace }}
+  {{- end }}
+{{- end }}

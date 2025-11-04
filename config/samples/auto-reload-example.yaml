@@ -1,0 +1,32 @@
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: auto-reload-example
+  namespace: production
+spec:
+  # Auto-reload mode: watches ALL ConfigMaps and Secrets referenced by target workloads
+  autoReloadAll: true
+
+  # Target workloads - any Secret/ConfigMap they reference will trigger reload
+  targets:
+    - kind: Deployment
+      name: frontend
+    - kind: Deployment
+      name: backend
+    - kind: StatefulSet
+      name: cache
+
+  # Reload on resource creation and deletion
+  reloadOnCreate: true
+  reloadOnDelete: true
+
+  # Use annotations strategy for GitOps compatibility
+  reloadStrategy: annotations
+
+  # Send alerts to multiple channels
+  alerts:
+    slack:
+      url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    teams:
+      secretRef:
+        name: teams-webhook-secret

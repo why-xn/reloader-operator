@@ -1,0 +1,97 @@
+{{- if .Values.rbac.create -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "reloader-operator.clusterRoleName" . }}
+  labels:
+    {{- include "reloader-operator.labels" . | nindent 4 }}
+  {{- with .Values.rbac.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+rules:
+# ConfigMaps and Secrets watching and patching
+- apiGroups:
+  - ""
+  resources:
+  - configmaps
+  - secrets
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Event creation for audit trail
+- apiGroups:
+  - ""
+  resources:
+  - events
+  verbs:
+  - create
+  - patch
+# Workload management (Deployments, StatefulSets, DaemonSets)
+- apiGroups:
+  - apps
+  resources:
+  - daemonsets
+  - deployments
+  - statefulsets
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# OpenShift DeploymentConfigs support
+- apiGroups:
+  - apps.openshift.io
+  resources:
+  - deploymentconfigs
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# Argo Rollouts support
+- apiGroups:
+  - argoproj.io
+  resources:
+  - rollouts
+  verbs:
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# ReloaderConfig CRD management
+- apiGroups:
+  - reloader.stakater.com
+  resources:
+  - reloaderconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+# ReloaderConfig finalizers
+- apiGroups:
+  - reloader.stakater.com
+  resources:
+  - reloaderconfigs/finalizers
+  verbs:
+  - update
+# ReloaderConfig status updates
+- apiGroups:
+  - reloader.stakater.com
+  resources:
+  - reloaderconfigs/status
+  verbs:
+  - get
+  - patch
+  - update
+{{- end }}

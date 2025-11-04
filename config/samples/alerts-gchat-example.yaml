@@ -1,0 +1,60 @@
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: reloader-with-gchat-alerts
+  namespace: staging
+spec:
+  # Watch specific resources
+  watchedResources:
+    secrets:
+      - tls-certificate
+      - oauth-credentials
+    configMaps:
+      - nginx-config
+      - application-properties
+
+  # Target workloads
+  targets:
+    - kind: Deployment
+      name: web-server
+      namespace: staging
+
+    - kind: DaemonSet
+      name: log-collector
+      namespace: staging
+
+  reloadStrategy: env-vars
+
+  # Alert configuration - Google Chat
+  alerts:
+    googleChat:
+      url: "https://chat.googleapis.com/v1/spaces/YOUR/messages?key=YOUR_KEY&token=YOUR_TOKEN"
+---
+# Alternative: Using secret reference
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gchat-webhook-secret
+  namespace: staging
+type: Opaque
+stringData:
+  url: "https://chat.googleapis.com/v1/spaces/YOUR/messages?key=YOUR_KEY&token=YOUR_TOKEN"
+---
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: reloader-gchat-with-secret
+  namespace: staging
+spec:
+  watchedResources:
+    secrets:
+      - app-secrets
+
+  targets:
+    - kind: Deployment
+      name: api-server
+
+  alerts:
+    googleChat:
+      secretRef:
+        name: gchat-webhook-secret
