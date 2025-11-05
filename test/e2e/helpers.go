@@ -200,14 +200,15 @@ metadata:
 		for _, env := range opts.AdditionalEnv {
 			envName := env["name"]
 			valueFrom := env["valueFrom"]
+			valueFromRef := env["valueFromRef"]
 			key := env["key"]
 
 			yaml += fmt.Sprintf(`        - name: %s
           valueFrom:
-            secretKeyRef:
+            %s:
               name: %s
               key: %s
-`, envName, valueFrom, key)
+`, envName, valueFromRef, valueFrom, key)
 		}
 	}
 

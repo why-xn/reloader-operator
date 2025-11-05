@@ -461,9 +461,10 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 				},
 				AdditionalEnv: []map[string]string{
 					{
-						"name":      "OTHER_SECRET",
-						"valueFrom": otherSecretName,
-						"key":       "password",
+						"name":         "OTHER_SECRET",
+						"valueFromRef": "secretKeyRef",
+						"valueFrom":    otherSecretName,
+						"key":          "password",
 					},
 				},
 			})
@@ -537,10 +538,10 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 				},
 				AdditionalEnv: []map[string]string{
 					{
-						"name":      "OTHER_CONFIG",
-						"valueFrom": otherConfigMapName,
-						//"valueFromRef": "configMapKeyRef",
-						"key": "config",
+						"name":         "OTHER_CONFIG",
+						"valueFrom":    otherConfigMapName,
+						"valueFromRef": "configMapKeyRef",
+						"key":          "config",
 					},
 				},
 			})
