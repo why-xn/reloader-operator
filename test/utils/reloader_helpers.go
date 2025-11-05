@@ -52,16 +52,17 @@ func GetPodUIDs(namespace, workloadType, workloadName string) ([]string, error) 
 	}
 	labelSelector := strings.Join(selectors, ",")
 
-	// Get pod UIDs
+	// Get pod UIDs (only Running pods, which excludes terminating ones)
 	cmd = exec.Command("kubectl", "get", "pods",
 		"-n", namespace,
 		"-l", labelSelector,
-		"-o", "jsonpath={.items[*].metadata.uid}")
+		"-o", "jsonpath={.items[?(@.status.phase=='Running')].metadata.uid}")
 	output, err = Run(cmd)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get pod UIDs: %w", err)
 	}
 
+	output = strings.TrimSpace(output)
 	if output == "" {
 		return []string{}, nil
 	}

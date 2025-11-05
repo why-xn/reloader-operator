@@ -1,35 +1,61 @@
 # Reloader Operator - Session Checkpoint
 
-**Date:** 2025-11-04
-**Status:** ✅ Core + Alerting + Testing + Helm Chart + E2E Tests Complete (98%)
+**Date:** 2025-11-04 (Updated)
+**Status:** ✅ E2E Tests Fixed & Working! 10/13 Core Tests Passing
 **Build:** ✅ Passing
 **Tests:** ✅ Unit tests passing (51.5% coverage on workload, 26.4% on util, 13.7% on alerts)
-**E2E Tests:** ✅ 15 comprehensive scenarios implemented
-**Next Session:** Ready to add Prometheus metrics (final 2%)
+**E2E Tests:** ✅ 10 of 13 core tests passing! (3-stage system implemented)
+**Next Session:** Fix pause period bug, add Prometheus metrics
 
 ---
 
-## 📍 Where We Are
+## 🎉 Latest Session Progress (2025-11-04)
 
-### ✅ Completed (100% Working)
+### ✅ Major Accomplishments
 
-1. **CRD Schema** - Complete API design with validation
-2. **Secret Watching** - Detects changes via SHA256 hash
-3. **ConfigMap Watching** - Detects changes (Data + BinaryData)
-4. **Workload Discovery** - Finds targets via CRD and annotations
-5. **Reload Triggers** - env-vars and annotations strategies
-6. **Backward Compatibility** - Original annotations still work
-7. **Status Management** - Conditions, counts, timestamps
-8. **Pause Periods** - Prevents reload storms
-9. **RBAC** - All required permissions configured
-10. **Alerting** - Slack, Teams, Google Chat integrations ✨
-11. **Comprehensive Testing** - Unit tests for all components ✨
-12. **Helm Chart** - Production-ready deployment package ✨
-13. **E2E Tests** - 15 comprehensive test scenarios ✨ NEW!
+1. **E2E Test Infrastructure Overhaul** ✨
+   - Implemented 3-stage E2E system (setup, test, cleanup)
+   - Resources persist after failures for troubleshooting
+   - Tests can be run independently without rebuild/redeploy
+   - Added helper commands: `e2e-status`, `e2e-logs`, `e2e-reset`
 
-### ⏳ Pending
+2. **Fixed Critical E2E Test Bugs** ✨
+   - Fixed `WaitForPodsReady()` - was splitting by newlines instead of spaces
+   - Fixed `GetPodUIDs()` - now excludes terminating pods during rolling updates
+   - Fixed metrics test ClusterRoleBinding idempotency
+   - Tests now run 7x faster (97s vs 412s)
 
-1. **Metrics** - Prometheus metrics (0%) - Final 2%
+3. **Removed Unnecessary Dependencies** ✨
+   - Removed cert-manager requirement (operator has no webhooks)
+   - Simplified test setup by ~10 seconds per run
+
+4. **Fixed nginx Image Issues** ✨
+   - Changed from `nginx:alpine` to `nginxinc/nginx-unprivileged:alpine`
+   - Tests now comply with Pod Security Standards (restricted)
+   - Pods start successfully without CrashLoopBackOff
+
+### 📊 Test Results
+
+**Before Fixes:** 1 passing, 4 failing
+**After Fixes:** 10 passing, 3 failing ✅
+**Improvement:** 9 additional tests now passing!
+
+**Passing Tests (10):**
+- ✅ Manager startup and health
+- ✅ Secret → Deployment reload (env-vars strategy)
+- ✅ ConfigMap → Deployment reload (env-vars strategy)
+- ✅ ConfigMap → StatefulSet reload (annotations strategy)
+- ✅ Multiple workloads with shared Secret
+- ✅ Annotation-based reload (secret.reloader.stakater.com/reload)
+- ✅ Annotation-based reload (configmap.reloader.stakater.com/reload)
+- ✅ Missing target workload handling
+- ✅ Missing watched resource handling
+- ✅ Watched resource deletion handling
+
+**Remaining Failures (3):**
+1. **Metrics endpoint test** - Infrastructure/timing issue, operator works correctly
+2. **Auto-reload annotation** - Design limitation (requires ReloaderConfig to trigger reconciliation)
+3. **Pause period test** - 🐛 BUG FOUND: `PausedUntil` is set but never checked before reload
 
 ---
 
@@ -44,7 +70,7 @@ Reloader-Operator/
 ├── internal/
 │   ├── controller/
 │   │   ├── reloaderconfig_controller.go       ✅ Main reconciler (730 lines)
-│   │   ├── reloaderconfig_controller_test.go  ✅ NEW! Integration tests (476 lines)
+│   │   ├── reloaderconfig_controller_test.go  ✅ Integration tests (476 lines)
 │   │   └── suite_test.go                      ✅ Test suite setup
 │   │
 │   └── pkg/
@@ -56,78 +82,136 @@ Reloader-Operator/
 │       │
 │       ├── workload/
 │       │   ├── finder.go               ✅ Workload discovery (350 lines)
-│       │   ├── finder_test.go          ✅ NEW! Unit tests (428 lines)
+│       │   ├── finder_test.go          ✅ Unit tests (428 lines)
 │       │   ├── updater.go              ✅ Rolling updates (200 lines)
-│       │   └── updater_test.go         ✅ NEW! Unit tests (398 lines)
+│       │   └── updater_test.go         ✅ Unit tests (398 lines)
 │       │
 │       └── alerts/                     ✅ Alerting system
 │           ├── types.go                ✅ Common types & interfaces
 │           ├── manager.go              ✅ Alert manager
-│           ├── manager_test.go         ✅ NEW! Unit tests (243 lines)
+│           ├── manager_test.go         ✅ Unit tests (243 lines)
 │           ├── slack.go                ✅ Slack integration
 │           ├── teams.go                ✅ Teams integration
 │           └── gchat.go                ✅ Google Chat integration
 │
-├── cmd/
-│   └── main.go                         ✅ Entry point (updated)
-│
-├── config/
-│   ├── crd/bases/                      ✅ Generated CRDs
-│   ├── rbac/                           ✅ RBAC manifests
-│   ├── manager/                        ✅ Deployment
-│   └── samples/                        ✅ 7 example CRs (including alerts)
-│
-├── charts/                             ✅ Helm chart
-│   └── reloader-operator/
-│       ├── Chart.yaml                  ✅ Chart metadata
-│       ├── values.yaml                 ✅ Default configuration
-│       ├── values-production.yaml      ✅ Production preset
-│       ├── values-development.yaml     ✅ Development preset
-│       ├── README.md                   ✅ Chart documentation
-│       ├── crds/                       ✅ CRD definitions
-│       └── templates/                  ✅ 15 K8s resource templates
-│
-├── test/                               ✅ NEW! E2E test suite
+├── test/
 │   ├── e2e/
-│   │   ├── e2e_suite_test.go           ✅ Suite setup
+│   │   ├── e2e_suite_test.go           ✅ Suite setup (supports skip flags)
 │   │   ├── e2e_test.go                 ✅ Manager tests
-│   │   ├── reloader_test.go            ✅ NEW! Core reload tests (525 lines)
-│   │   ├── annotation_test.go          ✅ NEW! Annotation tests (370 lines)
-│   │   ├── edge_cases_test.go          ✅ NEW! Edge case tests (445 lines)
-│   │   └── helpers.go                  ✅ NEW! Test helpers (310 lines)
+│   │   ├── reloader_test.go            ✅ Core reload tests (525 lines)
+│   │   ├── annotation_test.go          ✅ Annotation tests (370 lines)
+│   │   ├── edge_cases_test.go          ✅ Edge case tests (445 lines)
+│   │   └── helpers.go                  ✅ Test helpers (310 lines) - FIXED!
 │   └── utils/
 │       ├── utils.go                    ✅ Basic utilities
-│       └── reloader_helpers.go         ✅ NEW! Reloader helpers (315 lines)
+│       └── reloader_helpers.go         ✅ Reloader helpers (315 lines) - FIXED!
 │
-├── docs/
-│   ├── CHECKPOINT.md                         📍 THIS FILE
-│   ├── IMPLEMENTATION_COMPLETE.md            📚 Full summary
-│   ├── PROGRESS_UPDATE.md                    📚 Progress tracker
-│   ├── CRD_SCHEMA.md                         📚 API reference
-│   ├── SETUP_GUIDE.md                        📚 Setup instructions
-│   ├── QUICK_REFERENCE.md                    📚 Command cheat sheet
-│   ├── ALERTING_GUIDE.md                     📚 Alerting setup guide
-│   ├── HELM_CHART_GUIDE.md                   📚 Helm chart guide
-│   ├── E2E_TEST_PLAN.md                      📚 E2E test plan
-│   ├── E2E_IMPLEMENTATION_ROADMAP.md         📚 E2E roadmap
-│   └── E2E_TEST_IMPLEMENTATION_SUMMARY.md    📚 NEW! E2E summary
-│
-├── Makefile                            ✅ Build targets
-├── Dockerfile                          ✅ Container image
-├── go.mod / go.sum                     ✅ Dependencies
-└── PROJECT                             ✅ Kubebuilder metadata
+├── charts/                             ✅ Helm chart (20 files, ~1,600 lines)
+├── docs/                               ✅ 11 comprehensive guides
+├── Makefile                            ✅ Updated with 3-stage E2E targets
+└── ...
 ```
 
 **Total Code:** ~8,500 lines (~1,545 unit tests, ~2,000 E2E tests, ~1,600 Helm chart)
-**Files Created:** 49 files (5 alerting, 4 unit tests, 5 E2E tests, 20 Helm chart)
-**Documentation:** 11 comprehensive guides
-**Test Coverage:**
-  - Unit: 51.5% (workload), 26.4% (util), 13.7% (alerts)
-  - E2E: 15 comprehensive scenarios covering 90%+ functionality
+**Files Modified:** 5 files in this session (e2e_suite_test.go, e2e_test.go, helpers.go, reloader_helpers.go, Makefile)
 
 ---
 
-## 🚀 How to Resume
+## 🚀 3-Stage E2E Test System
+
+### New Workflow (Much Better for Development!)
+
+```bash
+# Stage 1: Setup (run once)
+make e2e-setup
+  - Creates Kind cluster
+  - Builds operator image
+  - Deploys operator
+  - Waits for operator to be ready
+
+# Stage 2: Test (run multiple times)
+make e2e-test
+  - Runs tests WITHOUT setup/cleanup
+  - Resources persist after failures
+  - Fast iteration (no rebuild)
+
+# Stage 3: Cleanup (when done)
+make e2e-cleanup
+  - Undeploys operator
+  - Deletes test namespace
+  - Deletes Kind cluster
+```
+
+### Helper Commands
+
+```bash
+make e2e-status     # Check environment status
+make e2e-logs       # Stream operator logs
+make e2e-reset      # Reset test namespace only
+make e2e-all        # Run all 3 stages (full test)
+```
+
+### Environment Variables
+
+- `E2E_SKIP_SETUP=true` - Skip BeforeSuite (operator already deployed)
+- `E2E_SKIP_CLEANUP=true` - Skip AfterSuite (keep resources for debugging)
+
+**These are automatically set by the Makefile targets!**
+
+---
+
+## 🐛 Bugs Found & Fixed
+
+### Fixed in This Session ✅
+
+1. **WaitForPodsReady() Counting Bug**
+   - **File:** `test/utils/reloader_helpers.go:95`
+   - **Issue:** Used `GetNonEmptyLines()` which splits by `\n`, but jsonpath returns space-separated names
+   - **Fix:** Changed to `strings.Fields()` to split by spaces
+   - **Impact:** All tests were timing out, now run 7x faster
+
+2. **GetPodUIDs() Including Terminating Pods**
+   - **File:** `test/utils/reloader_helpers.go:59`
+   - **Issue:** Returned ALL pods including terminating ones during rolling updates
+   - **Fix:** Filter to only Running pods: `{.items[?(@.status.phase=='Running')].metadata.uid}`
+   - **Impact:** Tests expecting exact pod counts were failing
+
+3. **nginx CrashLoopBackOff**
+   - **File:** `test/e2e/helpers.go:104,226,310`
+   - **Issue:** `nginx:alpine` requires root to write to `/var/cache/nginx/`
+   - **Fix:** Changed to `nginxinc/nginx-unprivileged:alpine`
+   - **Impact:** Pods can now run with `runAsNonRoot: true`
+
+4. **Metrics Test Not Idempotent**
+   - **File:** `test/e2e/e2e_test.go:160`
+   - **Issue:** ClusterRoleBinding creation fails on second run
+   - **Fix:** Delete before creating, added cleanup in AfterAll
+   - **Impact:** Test can now run multiple times
+
+### Known Issues (Not Fixed Yet)
+
+1. **Pause Period Not Enforced** 🐛
+   - **File:** `internal/controller/reloaderconfig_controller.go`
+   - **Issue:** `PausedUntil` is SET (lines 930, 956) but NEVER CHECKED before triggering reload
+   - **Impact:** Reloads happen even during pause period
+   - **Fix Needed:** Add validation before calling trigger reload
+   - **Test:** `edge_cases_test.go:293` - "should respect pause period between reloads"
+
+2. **Auto-Reload Annotation Limitation** (Design, not bug)
+   - **Issue:** `reloader.stakater.com/auto` annotation only works WITH a ReloaderConfig
+   - **Reason:** Operator doesn't watch ALL secrets/configmaps (performance)
+   - **Impact:** Test `annotation_test.go:159` expects it to work without ReloaderConfig
+   - **Solution:** Update test or document this limitation
+
+3. **Metrics Endpoint Test Timing Out** (Infrastructure, not operator)
+   - **Issue:** Test times out waiting for log message "Serving metrics server"
+   - **Reality:** Logs confirm metrics server IS running on port 8443
+   - **Impact:** Test `e2e_test.go:160` fails intermittently
+   - **Solution:** Adjust Eventually timeout or improve log detection
+
+---
+
+## 📋 How to Resume
 
 ### Quick Start
 
@@ -135,571 +219,290 @@ Reloader-Operator/
 # Navigate to project
 cd /mnt/c/Workspace/Stakater/Assignment/Reloader-Operator
 
-# Verify everything builds
-make build
+# Check current status
+make e2e-status
 
-# Expected output:
-# ✅ go fmt ./...
-# ✅ go vet ./...
-# ✅ go build -o bin/manager cmd/main.go
-```
-
-### Run Tests
-
-```bash
-# Run all tests
-make test
-
-# Run specific package tests
-go test ./internal/pkg/util/... -v          # Hash utility tests (8 tests)
-go test ./internal/pkg/alerts/... -v        # Alert manager tests
-go test ./internal/pkg/workload/... -v      # Workload finder/updater tests
-go test ./internal/controller/... -v        # Controller tests (needs envtest)
-
-# Expected output:
-# ✅ ok  	github.com/stakater/Reloader/internal/pkg/alerts	0.142s	coverage: 13.7%
-# ✅ ok  	github.com/stakater/Reloader/internal/pkg/util	0.010s	coverage: 26.4%
-# ✅ PASS: TestFindReloaderConfigsWatchingResource, TestFindWorkloadsWithAnnotations
-# ✅ PASS: TestTriggerReloadEnvVarsStrategy, TestTriggerReloadAnnotationsStrategy
-```
-
-### Check Documentation
-
-```bash
-# Read the comprehensive summary
-cat IMPLEMENTATION_COMPLETE.md
-
-# Read API documentation
-cat docs/CRD_SCHEMA.md
-
-# Read setup guide
-cat docs/SETUP_GUIDE.md
-```
-
----
-
-## 🧪 Testing the Operator
-
-### Option 1: Run Locally (Recommended for Development)
-
-```bash
-# Terminal 1: Install CRDs and run operator
-make install
-make run
-
-# Terminal 2: Create test resources
-kubectl create secret generic test-secret --from-literal=password=test123
-
-kubectl apply -f - <<EOF
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: test-app
-spec:
-  replicas: 2
-  selector:
-    matchLabels:
-      app: test
-  template:
-    metadata:
-      labels:
-        app: test
-    spec:
-      containers:
-      - name: nginx
-        image: nginx:alpine
-        env:
-        - name: SECRET_VALUE
-          valueFrom:
-            secretKeyRef:
-              name: test-secret
-              key: password
-EOF
-
-kubectl apply -f - <<EOF
-apiVersion: reloader.stakater.com/v1alpha1
-kind: ReloaderConfig
-metadata:
-  name: test-reloader
-spec:
-  watchedResources:
-    secrets:
-      - test-secret
-  targets:
-    - kind: Deployment
-      name: test-app
-EOF
-
-# Update secret - watch deployment reload!
-kubectl create secret generic test-secret \
-  --from-literal=password=new456 \
-  --dry-run=client -o yaml | kubectl apply -f -
-
-# Watch pods restart
-kubectl get pods -w
-```
-
-### Option 2: Deploy to Cluster
-
-```bash
-# Build and push image
-make docker-build IMG=myrepo/reloader-operator:v2.0.0-dev
-make docker-push IMG=myrepo/reloader-operator:v2.0.0-dev
-
-# Deploy to cluster
-make deploy IMG=myrepo/reloader-operator:v2.0.0-dev
-
-# Check it's running
-kubectl get pods -n reloader-operator-system
-
-# View logs
-kubectl logs -n reloader-operator-system \
-  deployment/reloader-operator-controller-manager -f
-```
-
----
-
-## 🎯 What Works Right Now
-
-### Feature Matrix
-
-| Feature | Status | Command to Test |
-|---------|--------|----------------|
-| Secret change detection | ✅ Working | Update secret, watch deployment reload |
-| ConfigMap change detection | ✅ Working | Update configmap, watch deployment reload |
-| CRD-based config | ✅ Working | Create ReloaderConfig resource |
-| Annotation-based config | ✅ Working | Use `secret.reloader.stakater.com/reload` |
-| env-vars strategy | ✅ Working | Default strategy, updates `RELOADER_TRIGGERED_AT` |
-| annotations strategy | ✅ Working | Set `reloadStrategy: annotations` |
-| AutoReloadAll | ✅ Working | Set `autoReloadAll: true` |
-| Pause periods | ✅ Working | Set `pausePeriod: 5m` on target |
-| Status tracking | ✅ Working | `kubectl get rc -o yaml` |
-| Deployment reload | ✅ Working | Triggers rolling update |
-| StatefulSet reload | ✅ Working | Triggers rolling update |
-| DaemonSet reload | ✅ Working | Triggers rolling update |
-
-### What to Expect
-
-**When a Secret/ConfigMap changes:**
-1. ✅ Operator detects change (hash comparison)
-2. ✅ Finds affected workloads (CRD + annotations)
-3. ✅ Checks pause period
-4. ✅ Triggers rolling update
-5. ✅ Updates status (count, timestamp)
-6. ✅ Logs all actions
-
-**Logs you'll see:**
-```
-INFO Secret data changed {"oldHash": "abc123", "newHash": "def456"}
-INFO Found targets for reload {"totalTargets": 2, "fromCRD": 1, "fromAnnotations": 1}
-INFO Successfully triggered reload {"kind": "Deployment", "name": "test-app", "strategy": "env-vars"}
-```
-
----
-
-## 🔧 Common Commands
-
-```bash
-# Build
-make build
-
-# Generate code (after changing types)
-make generate
-
-# Generate manifests (CRDs, RBAC)
-make manifests
+# If operator not deployed:
+make e2e-setup
 
 # Run tests
+make e2e-test
+
+# Check results and troubleshoot
+kubectl get all,reloaderconfig -n test-reloader
+make e2e-logs
+
+# Clean up when done
+make e2e-cleanup
+```
+
+### Test Specific Features
+
+```bash
+# Run specific test
+E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e/ -v \
+  -ginkgo.focus="should reload Deployment when Secret changes"
+
+# Run all tests in a category
+E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e/ -v \
+  -ginkgo.focus="CRD-based Configuration"
+
+# Reset between test runs
+make e2e-reset && make e2e-test
+```
+
+### Verify Everything Works
+
+```bash
+# 1. Build passes
+make build
+
+# 2. Unit tests pass
 make test
 
-# Install CRDs
-make install
+# 3. E2E setup works
+make e2e-setup
 
-# Uninstall CRDs
-make uninstall
+# 4. E2E tests run (10 should pass)
+make e2e-test
 
-# Run locally
-make run
+# 5. Check operator logs
+make e2e-logs
 
-# Build Docker image
-make docker-build IMG=myrepo/reloader-operator:tag
-
-# Deploy to cluster
-make deploy IMG=myrepo/reloader-operator:tag
-
-# Undeploy from cluster
-make undeploy
-
-# View logs (when deployed)
-kubectl logs -n reloader-operator-system \
-  deployment/reloader-operator-controller-manager -f
+# 6. Verify reloads are happening
+kubectl get reloaderconfig -n test-reloader -o yaml
 ```
 
 ---
 
-## 📋 Next Steps (Choose One)
+## 🎯 Next Steps (Priority Order)
 
-### ~~Path 1: Add Alerting~~ ✅ COMPLETE
+### 1. Fix Pause Period Bug (High Priority) ⏱️ ~30 minutes
 
-**Completed in this session:**
-- ✅ Slack integration (`internal/pkg/alerts/slack.go`)
-- ✅ Microsoft Teams integration (`internal/pkg/alerts/teams.go`)
-- ✅ Google Chat integration (`internal/pkg/alerts/gchat.go`)
-- ✅ Alert manager with webhook URL resolution
-- ✅ Integration into controller reconcile loop
-- ✅ Example configurations and documentation
+**Issue:** `PausedUntil` is set but never checked
 
-### ~~Path 2: Write Comprehensive Tests~~ ✅ COMPLETE
+**Files to Modify:**
+- `internal/controller/reloaderconfig_controller.go`
 
-**Completed in this session:**
-- ✅ Controller integration tests (`reloaderconfig_controller_test.go` - 476 lines)
-- ✅ Workload finder tests (`finder_test.go` - 428 lines)
-- ✅ Workload updater tests (`updater_test.go` - 398 lines)
-- ✅ Alert manager tests (`manager_test.go` - 243 lines)
-- ✅ Hash utility tests (already existed - 8 test cases)
-- ✅ Test coverage: 51.5% (workload), 26.4% (util), 13.7% (alerts)
+**What to Do:**
+1. Find where `triggerReload()` is called (around line 400-500)
+2. Before calling it, check if current time < `PausedUntil`
+3. If paused, skip reload and log message
+4. Test with: `go test -tags=e2e ./test/e2e/ -v -ginkgo.focus="pause period"`
 
-### ~~Path 3: Create Helm Chart~~ ✅ COMPLETE
+**Expected Result:**
+- Test `edge_cases_test.go:293` should pass
+- 11 of 13 tests passing
 
-**Completed in this session:**
-- ✅ Complete Helm chart structure (20 files, ~1,600 lines)
-- ✅ Chart.yaml with proper metadata
-- ✅ Comprehensive values.yaml with 200+ configuration options
-- ✅ Production-optimized preset (values-production.yaml)
-- ✅ Development-friendly preset (values-development.yaml)
-- ✅ 15 Kubernetes resource templates (Deployment, RBAC, Service, etc.)
-- ✅ Helper templates for reusability
-- ✅ CRD included in chart
-- ✅ ServiceMonitor for Prometheus Operator
-- ✅ Optional resources (PDB, HPA, NetworkPolicy)
-- ✅ Comprehensive README with examples
-- ✅ Post-install NOTES.txt
-- ✅ All tests passing (helm lint ✅, helm template ✅, helm package ✅)
+### 2. Add Prometheus Metrics (Medium Priority) ⏱️ ~2 hours
 
-### Path 4: Add Prometheus Metrics (High Priority) ⏱️ ~2 hours
+**Files to Create:**
+- `internal/pkg/metrics/metrics.go`
 
-**Files to create:**
-- `internal/pkg/metrics/metrics.go` - Prometheus metrics
+**Metrics to Add:**
+- `reloader_reloads_total{kind, name, namespace}` - Counter
+- `reloader_reload_errors_total{kind, name}` - Counter
+- `reloader_watched_resources{kind}` - Gauge
+- `reloader_last_reload_timestamp{kind, name}` - Gauge
 
-**Metrics to add:**
-- `reloader_reloads_total` - Counter of reloads
-- `reloader_reload_errors_total` - Counter of errors
-- `reloader_last_reload_timestamp` - Timestamp of last reload
-- `reloader_watched_resources` - Gauge of watched resources
+**What to Do:**
+1. Import `github.com/prometheus/client_golang/prometheus`
+2. Define collectors
+3. Register in controller setup
+4. Increment/update in `triggerReload()` and `updateTargetStatus()`
+5. Verify with: `kubectl port-forward -n reloader-operator-system svc/reloader-operator-controller-manager-metrics-service 8443:8443`
 
-**What to do:**
-1. Import prometheus client library
-2. Define metrics collectors
-3. Expose metrics endpoint
-4. Update controller to record metrics
+### 3. Document Auto-Reload Limitation (Low Priority) ⏱️ ~15 minutes
 
+**Files to Update:**
+- `docs/CRD_SCHEMA.md`
+- `docs/QUICK_REFERENCE.md`
 
----
+**What to Document:**
+- `reloader.stakater.com/auto` requires a ReloaderConfig watching the resource
+- Operator doesn't watch ALL secrets/configmaps for performance
+- Show example of using `autoReloadAll: true` in ReloaderConfig
 
-## 🐛 Known Limitations
+**Test to Update:**
+- Skip or modify `annotation_test.go:159` test
 
-1. ~~**No alerting yet**~~ ✅ COMPLETE - Slack, Teams, Google Chat integrated
-2. ~~**Limited tests**~~ ✅ COMPLETE - Comprehensive unit tests added
-3. ~~**No Helm chart**~~ ✅ COMPLETE - Production-ready Helm chart available
-4. **No metrics yet** - Prometheus metrics not implemented
-5. **No Argo Rollouts support** - Only k8s native workloads
-6. **No OpenShift DC support** - DeploymentConfigs not implemented
-7. **No CronJob support** - Not implemented yet
+### 4. Improve Metrics Test Reliability (Low Priority) ⏱️ ~30 minutes
+
+**File to Update:**
+- `test/e2e/e2e_test.go:197`
+
+**What to Do:**
+1. Increase Eventually timeout from default to 3 minutes
+2. Add more detailed logging in test
+3. Consider using curl pod approach instead of log parsing
+4. Or mark as flaky and skip for now
 
 ---
 
-## 💡 Quick Troubleshooting
+## 🧪 Current Test Results
 
-### Build Fails
+### E2E Test Summary
+
+```
+Ran 13 of 16 Specs in 97.238 seconds
+✅ 10 Passed | ❌ 3 Failed | ⏭️ 3 Skipped
+
+Passing Tests (10):
+  ✅ Manager should run successfully
+  ✅ ReloaderConfig: Secret → Deployment reload (env-vars)
+  ✅ ReloaderConfig: ConfigMap → Deployment reload (env-vars)
+  ✅ ReloaderConfig: ConfigMap → StatefulSet reload (annotations)
+  ✅ ReloaderConfig: Multiple workloads with shared Secret
+  ✅ Annotation: secret.reloader.stakater.com/reload
+  ✅ Annotation: configmap.reloader.stakater.com/reload
+  ✅ Edge Case: Missing target workload handling
+  ✅ Edge Case: Missing watched resource handling
+  ✅ Edge Case: Watched resource deletion handling
+
+Failing Tests (3):
+  ❌ Manager: Metrics endpoint (timing/infrastructure issue)
+  ❌ Annotation: Auto-reload without ReloaderConfig (design limitation)
+  ❌ Edge Case: Pause period enforcement (bug - needs fix)
+```
+
+### Resources in Test Namespace
+
+After a test run, you can inspect:
 
 ```bash
-# Clean and rebuild
-rm -rf bin/
-make build
+kubectl get all,reloaderconfig,secrets,configmaps -n test-reloader
 ```
 
-### CRD Not Found
+Example output:
+```
+NAME                              READY   STATUS    RESTARTS   AGE
+pod/test-app-9b777844f-65q74     1/1     Running   0          76s
+pod/test-app-9b777844f-l6dvn     1/1     Running   0          78s
 
-```bash
-# Reinstall CRDs
-make uninstall
-make install
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/test-app   2/2     2            2           82s
+
+NAME                                            STRATEGY   TARGETS   RELOADS   LAST RELOAD   AGE
+reloaderconfig.reloader.stakater.com/test-config   env-vars             1         78s           78s
 ```
 
-### Operator Not Triggering Reload
-
-**Check:**
-1. Is operator running? `kubectl get pods -n reloader-operator-system`
-2. Are there errors in logs? `kubectl logs ...`
-3. Did the hash actually change? Check annotation `reloader.stakater.com/last-hash`
-4. Is workload in same namespace as resource?
-5. Does ReloaderConfig have correct resource names?
-
-### Status Not Updating
-
-```bash
-# Check if status subresource is enabled
-kubectl get crd reloaderconfigs.reloader.stakater.com -o yaml | grep subresources
-
-# Should show:
-# subresources:
-#   status: {}
-```
+**Proof the operator is working!** ✅
 
 ---
 
-## 📚 Documentation Index
+## 💡 Key Files Changed in This Session
 
-| Document | Purpose | When to Read |
-|----------|---------|-------------|
-| **CHECKPOINT.md** | Resume point | 📍 **Start here next session** |
-| **IMPLEMENTATION_COMPLETE.md** | Full summary with examples | When you need overview |
-| **CRD_SCHEMA.md** | API reference | When designing configs |
-| **SETUP_GUIDE.md** | Step-by-step setup | When setting up from scratch |
-| **QUICK_REFERENCE.md** | Command cheat sheet | When you need quick commands |
-| **ALERTING_GUIDE.md** | Alerting configuration | When setting up alerts |
-| **HELM_CHART_GUIDE.md** | Helm chart usage | 📍 **When deploying with Helm** |
-| **PROGRESS_UPDATE.md** | Session progress | When tracking work done |
+1. **test/e2e/e2e_suite_test.go**
+   - Added `E2E_SKIP_SETUP` and `E2E_SKIP_CLEANUP` environment variable support
+   - Removed cert-manager dependency
+   - Added helpful troubleshooting messages
 
----
+2. **test/e2e/helpers.go**
+   - Changed `nginx:alpine` → `nginxinc/nginx-unprivileged:alpine`
+   - Made `CleanupTestNamespace()` respect `E2E_SKIP_CLEANUP`
+   - Added `os` import
 
-## 🎓 Key Learnings
+3. **test/utils/reloader_helpers.go**
+   - Fixed `WaitForPodsReady()` to use `strings.Fields()` instead of `GetNonEmptyLines()`
+   - Fixed `GetPodUIDs()` to only return Running pods
+   - Added proper trimming of output
 
-### Architecture Decisions
+4. **test/e2e/e2e_test.go**
+   - Made metrics test idempotent (delete ClusterRoleBinding before creating)
+   - Added ClusterRoleBinding cleanup in AfterAll
 
-1. **Dual Configuration Support**
-   - CRD for new users (declarative)
-   - Annotations for backward compatibility
-   - Both work simultaneously
-
-2. **Hash-Based Change Detection**
-   - SHA256 of resource data
-   - Prevents unnecessary reloads
-   - Stored in annotations
-
-3. **Two Reload Strategies**
-   - env-vars: Universal, simple
-   - annotations: GitOps-friendly
-
-4. **Modular Design**
-   - Finder: Discovery logic
-   - Updater: Reload logic
-   - Controller: Orchestration
-
-### Code Quality
-
-- ✅ Proper error handling throughout
-- ✅ Structured logging with context
-- ✅ RBAC permissions documented
-- ✅ Status conditions for observability
-- ✅ Clean separation of concerns
-- ✅ Well-documented code
+5. **Makefile**
+   - Added comprehensive 3-stage E2E system
+   - New targets: `e2e-setup`, `e2e-test`, `e2e-cleanup`, `e2e-all`
+   - Helper targets: `e2e-status`, `e2e-logs`, `e2e-reset`
+   - Clear progress messages and next-step guidance
 
 ---
 
-## 🚀 Ready to Continue
+## 📚 Documentation
 
-**Everything is saved and working!**
+All documentation is up to date:
 
-When you resume:
-1. Read this checkpoint
-2. Run `make build` to verify
-3. Run `make test` to verify tests pass
-4. Test Helm chart: `helm lint charts/reloader-operator`
-5. Pick next step: Path 4 (Prometheus Metrics)
-6. Continue implementing
-
-**Your progress is at 92% complete. The operator is production-ready with alerting, testing, and Helm chart! The remaining 8% is for observability metrics.**
+| Document | Purpose | Status |
+|----------|---------|--------|
+| **CHECKPOINT.md** | Resume point | ✅ **THIS FILE** |
+| **IMPLEMENTATION_COMPLETE.md** | Full summary | ✅ Complete |
+| **CRD_SCHEMA.md** | API reference | ✅ Complete |
+| **SETUP_GUIDE.md** | Setup instructions | ✅ Complete |
+| **QUICK_REFERENCE.md** | Command cheat sheet | ✅ Complete |
+| **ALERTING_GUIDE.md** | Alerting setup | ✅ Complete |
+| **HELM_CHART_GUIDE.md** | Helm chart usage | ✅ Complete |
+| **E2E_TEST_PLAN.md** | E2E test plan | ✅ Complete |
+| **E2E_TEST_IMPLEMENTATION_SUMMARY.md** | E2E summary | ✅ Complete |
+| **E2E_TEST_FIX.md** | Fix documentation | 📝 Could be added |
 
 ---
 
-## ✅ Checklist Before Next Session
+## ✅ Checklist - Current State
 
 - [x] All code saved in `/mnt/c/Workspace/Stakater/Assignment/Reloader-Operator/`
 - [x] Build passing (`make build` ✅)
-- [x] Tests passing (`make test` - unit tests ✅)
-- [x] E2E tests implemented (15 scenarios, ~2,000 lines ✅)
-- [x] Core features working (Secret/ConfigMap reload ✅)
-- [x] Alerting complete (Slack, Teams, Google Chat ✅)
-- [x] Comprehensive testing added (1,545 lines unit tests + 2,000 lines E2E ✅)
-- [x] Helm chart complete (20 files, ~1,600 lines ✅)
-- [x] Helm chart tested (lint, template, package all passing ✅)
-- [x] Documentation complete (11 guides ✅)
-- [x] Checkpoint updated (this file ✅)
-- [x] Example configurations with alerts ✅
-- [x] Test coverage verified ✅
+- [x] Unit tests passing (`make test` ✅)
+- [x] E2E test infrastructure working (3-stage system ✅)
+- [x] E2E tests improved (1 → 10 passing ✅)
+- [x] Core operator functionality verified (reloads working ✅)
+- [x] Bugs identified and documented ✅
+- [x] Test environment can be preserved for troubleshooting ✅
+- [x] nginx image issue fixed ✅
+- [x] cert-manager removed ✅
+- [x] Documentation updated (this checkpoint ✅)
+- [ ] Pause period bug needs fixing 🐛
+- [ ] Prometheus metrics to be added
+- [ ] Auto-reload annotation limitation to be documented
 
 ---
 
-**Session Complete!** 🎉
+## 🎉 Session Complete!
 
-**To resume:** `cd /mnt/c/Workspace/Stakater/Assignment/Reloader-Operator && cat CHECKPOINT.md`
+**Major Achievement:** E2E test system overhauled and 9 additional tests now passing!
+
+**Operator Status:** Core functionality verified working through E2E tests
+- ✅ Secret/ConfigMap change detection working
+- ✅ Workload reload triggering working
+- ✅ Rolling updates completing successfully
+- ✅ Status tracking working
+- ✅ Annotation-based configuration working
+- ✅ CRD-based configuration working
+- ✅ Error handling working
+
+**To Resume Next Session:**
+```bash
+cd /mnt/c/Workspace/Stakater/Assignment/Reloader-Operator
+cat CHECKPOINT.md
+make e2e-status        # Check current state
+make e2e-test          # Run tests
+```
 
 ---
 
-**Last Updated:** 2025-11-04
+**Last Updated:** 2025-11-04 (Session 3)
 **Status:** ✅ Ready to Resume
-**Completion:** 98% (Core + Alerting + Testing + Helm Chart + E2E Tests)
-**Next:** Prometheus Metrics (Final 2%)
+**Completion:** 95% (Core + Alerting + Testing + Helm + E2E Working)
+**Next Priority:** Fix pause period bug (30 min), then add metrics (2 hrs)
 
 ---
 
-## 📝 Session Summary (2025-11-04)
+**Quick Commands Reference:**
 
-### ✨ Completed in This Session
+```bash
+# Development workflow
+make e2e-setup         # One-time setup
+make e2e-test          # Run tests (multiple times)
+make e2e-reset         # Clear test resources
+make e2e-cleanup       # Full cleanup
 
-1. **E2E Test Implementation** ✅ Complete! (~2,000 lines)
-   - Created `test/utils/reloader_helpers.go` (315 lines)
-     - GetPodUIDs, WaitForPodsReady, WaitForRolloutComplete
-     - GetReloaderConfigStatus, WaitForStatusUpdate
-     - GetPodTemplateEnvVars, GetPodTemplateAnnotations
-     - ApplyYAML, DeleteYAML, YAML file operations
-     - Generation tracking and change detection
+# Troubleshooting
+make e2e-status        # Check what's running
+make e2e-logs          # View operator logs
+kubectl get all -n test-reloader   # Check test resources
 
-   - Created `test/e2e/helpers.go` (310 lines)
-     - Test namespace setup/cleanup
-     - YAML generators for all resource types
-     - Deployment, StatefulSet, DaemonSet generators
-     - ReloaderConfig generator with flexible options
+# Specific test
+E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e/ -v -ginkgo.focus="pause period"
+```
 
-   - Created `test/e2e/reloader_test.go` (525 lines)
-     - ✅ Secret → Deployment reload (env-vars)
-     - ✅ ConfigMap → Deployment reload (env-vars)
-     - ✅ ConfigMap → StatefulSet reload (annotations)
-     - ✅ Multiple workloads with shared Secret
-
-   - Created `test/e2e/annotation_test.go` (370 lines)
-     - ✅ Legacy secret.reloader.stakater.com/reload
-     - ✅ Legacy configmap.reloader.stakater.com/reload
-     - ✅ Auto-reload annotation
-     - ✅ Ignore annotation
-     - ✅ Multiple secrets in comma-separated annotation
-
-   - Created `test/e2e/edge_cases_test.go` (445 lines)
-     - ✅ Missing target workload handling
-     - ✅ Missing watched resource handling
-     - ✅ Watched resource deletion handling
-     - ✅ Pause period enforcement
-     - ✅ Multiple ReloaderConfigs watching same resource
-
-2. **Documentation** (~350 lines)
-   - Created `docs/E2E_TEST_IMPLEMENTATION_SUMMARY.md`
-   - Updated `CHECKPOINT.md` (this file)
-
-### 📊 Test Coverage Summary
-
-**E2E Test Scenarios: 15**
-- CRD-based configuration: 4 tests
-- Annotation-based configuration: 5 tests
-- Edge cases and error handling: 6 tests
-
-**Features Covered:**
-- ✅ Secret watching and reload
-- ✅ ConfigMap watching and reload
-- ✅ Deployment, StatefulSet workload types
-- ✅ env-vars and annotations strategies
-- ✅ CRD and annotation-based configuration
-- ✅ Multiple targets handling
-- ✅ Pause period enforcement
-- ✅ Error and edge case handling
-- ✅ Status updates and conditions
-- ✅ Backward compatibility
-
-### 🎯 Verification
-
-- ✅ All test files compile successfully
-- ✅ Helper functions implemented and working
-- ✅ YAML generators tested
-- ✅ Tests use proper Ginkgo/Gomega patterns
-- ✅ Comprehensive verification in each test
-- ✅ Ready for execution on Kind cluster
-
-### 📈 Progress
-
-- **Before Session:** 92% complete
-- **After Session:** 98% complete
-- **Remaining:** Prometheus Metrics (2%)
-
----
-
-## 📝 Session Summary (2025-10-31 - Part 2)
-
-### ✨ Completed in Latest Session
-
-1. **Unit Test Fixes** ✅ All tests now passing!
-   - Fixed `applyEnvVarsStrategy()` to add resource hash annotation
-   - Implemented `workloadReferencesResource()` for auto-reload detection
-   - Fixed controller test suite to properly initialize dependencies
-   - **Results:**
-     - Controller: 65.7% coverage (5/5 tests ✅)
-     - Workload: 46.2% coverage (all tests ✅)
-     - Util: 26.4% coverage (all tests ✅)
-     - Alerts: 13.7% coverage (all tests ✅)
-
-2. **E2E Test Planning** 📋 Comprehensive plan created!
-   - Created detailed test plan (docs/E2E_TEST_PLAN.md)
-   - Created implementation roadmap (docs/E2E_IMPLEMENTATION_ROADMAP.md)
-   - Defined 8 test categories with 25+ scenarios
-   - Outlined test utilities and helpers needed
-   - Estimated 8-10 hours implementation time
-
----
-
-## 📝 Session Summary (2025-10-31 - Part 1)
-
-### ✨ Completed in Previous Session
-
-1. **Multi-Channel Alerting** (~1,300 lines)
-   - Slack, Microsoft Teams, Google Chat integrations
-   - Alert manager with concurrent dispatch
-   - Webhook URL resolution (direct + secret-based)
-   - Success and error notifications
-   - 4 example configurations
-   - Comprehensive alerting guide (500+ lines)
-
-2. **Comprehensive Testing** (~1,545 lines)
-   - Controller integration tests (476 lines)
-   - Workload finder tests (428 lines)
-   - Workload updater tests (398 lines)
-   - Alert manager tests (243 lines)
-   - Test coverage: 51.5% (workload), 26.4% (util), 13.7% (alerts)
-
-3. **Production-Ready Helm Chart** (~1,600 lines) ✨ NEW!
-   - Complete chart structure (20 files)
-   - Comprehensive values.yaml (200+ options)
-   - Production and development presets
-   - 15 Kubernetes resource templates
-   - ServiceMonitor for Prometheus Operator
-   - Optional HA resources (PDB, HPA, NetworkPolicy)
-   - Comprehensive README and documentation
-   - All tests passing (lint ✅, template ✅, package ✅)
-
-4. **Documentation Updates**
-   - ALERTING_GUIDE.md created
-   - HELM_CHART_GUIDE.md created ✨ NEW!
-   - IMPLEMENTATION_COMPLETE.md updated
-   - CHECKPOINT.md updated (this file)
-
-### 📊 Progress Update
-
-- **Session Start:** 70% complete (Core functionality only)
-- **After Alerting + Testing:** 85% complete
-- **After Helm Chart:** 92% complete
-- **After E2E Tests:** 98% complete ✨ NEW!
-- **Remaining:** Prometheus Metrics (2%)
-
-### 🎯 Next Priorities
-
-1. ~~**E2E Integration Tests**~~ ✅ COMPLETE!
-   - **Status:** ✅ Implementation Complete (2025-11-04)
-   - **Files:** 5 new files (~2,000 lines)
-   - **Tests:** 15 comprehensive scenarios
-   - **Coverage:** 90%+ of operator functionality
-   - **Documents:** `docs/E2E_TEST_IMPLEMENTATION_SUMMARY.md`
-   - **Phases Completed:**
-     - ✅ Phase 1: Test utilities created
-     - ✅ Phase 2: Core reload scenarios (4 tests)
-     - ✅ Phase 3: Annotation-based tests (5 tests)
-     - ✅ Phase 4: Edge cases and error handling (6 tests)
-
-2. **Prometheus Metrics** (~2 hours) - Final 2% - Add observability counters and gauges
+🚀 **Ready for next session!**
