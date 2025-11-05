@@ -89,16 +89,17 @@ data:
 
 // DeploymentOpts contains options for generating a Deployment
 type DeploymentOpts struct {
-	Replicas        int
-	Image           string
-	Labels          map[string]string
-	Annotations     map[string]string
-	SecretName      string
-	SecretKey       string
-	ConfigMapName   string
-	ConfigMapKey    string
-	EnvVarName      string
-	VolumeMount     bool
+	Replicas      int
+	Image         string
+	Labels        map[string]string
+	Annotations   map[string]string
+	SecretName    string
+	SecretKey     string
+	ConfigMapName string
+	ConfigMapKey  string
+	EnvVarName    string
+	VolumeMount   bool
+	AdditionalEnv []map[string]string // Additional env vars: [{"name": "VAR", "valueFrom": "secret-name", "key": "key"}]
 }
 
 // GenerateDeployment creates a Deployment YAML string
@@ -124,7 +125,7 @@ metadata:
 	if len(opts.Annotations) > 0 {
 		yaml += "  annotations:\n"
 		for k, v := range opts.Annotations {
-			yaml += fmt.Sprintf("    %s: %s\n", k, v)
+			yaml += fmt.Sprintf("    %s: \"%s\"\n", k, v)
 		}
 	}
 
@@ -158,7 +159,7 @@ metadata:
 `
 
 	// Add environment variables if secret or configmap is specified
-	if opts.SecretName != "" || opts.ConfigMapName != "" {
+	if opts.SecretName != "" || opts.ConfigMapName != "" || len(opts.AdditionalEnv) > 0 {
 		yaml += "        env:\n"
 
 		if opts.SecretName != "" {
@@ -185,7 +186,7 @@ metadata:
 			}
 			configMapKey := opts.ConfigMapKey
 			if configMapKey == "" {
-				configMapKey = "setting"
+				configMapKey = "config"
 			}
 			yaml += fmt.Sprintf(`        - name: %s
           valueFrom:
@@ -193,6 +194,20 @@ metadata:
               name: %s
               key: %s
 `, envName, opts.ConfigMapName, configMapKey)
+		}
+
+		// Add additional environment variables
+		for _, env := range opts.AdditionalEnv {
+			envName := env["name"]
+			valueFrom := env["valueFrom"]
+			key := env["key"]
+
+			yaml += fmt.Sprintf(`        - name: %s
+          valueFrom:
+            secretKeyRef:
+              name: %s
+              key: %s
+`, envName, valueFrom, key)
 		}
 	}
 
@@ -287,7 +302,7 @@ metadata:
 		}
 		configMapKey := opts.ConfigMapKey
 		if configMapKey == "" {
-			configMapKey = "setting"
+			configMapKey = "config"
 		}
 		yaml += fmt.Sprintf(`        - name: %s
           valueFrom:

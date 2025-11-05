@@ -156,7 +156,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 
 			By("creating a ConfigMap")
 			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
-				"setting": "initial-value",
+				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
@@ -164,7 +164,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
-				ConfigMapKey:  "setting",
+				ConfigMapKey:  "config",
 				EnvVarName:    "CONFIG_SETTING",
 			})
 			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
@@ -203,7 +203,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 
 			By("updating the ConfigMap")
 			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
-				"setting": "updated-value",
+				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
 
@@ -240,7 +240,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 
 			By("creating a ConfigMap")
 			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
-				"setting": "initial-value",
+				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
@@ -248,7 +248,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			statefulSetYAML := GenerateStatefulSet(statefulSetName, testNS, StatefulSetOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
-				ConfigMapKey:  "setting",
+				ConfigMapKey:  "config",
 				EnvVarName:    "CONFIG_SETTING",
 			})
 			Expect(utils.ApplyYAML(statefulSetYAML)).To(Succeed())
@@ -287,7 +287,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 
 			By("updating the ConfigMap")
 			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
-				"setting": "updated-value",
+				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
 
