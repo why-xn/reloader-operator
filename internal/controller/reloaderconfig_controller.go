@@ -70,7 +70,7 @@ type ReloaderConfigReconciler struct {
 	WorkloadFinder  *workload.Finder
 	WorkloadUpdater *workload.Updater
 	AlertManager    *alerts.Manager
-	statusQueue     workqueue.RateLimitingInterface
+	statusQueue     workqueue.TypedRateLimitingInterface[statusUpdateWorkItem]
 	ctx             context.Context
 	cancelFunc      context.CancelFunc
 }
@@ -89,27 +89,20 @@ func (r *ReloaderConfigReconciler) processNextStatusUpdate() bool {
 	}
 	defer r.statusQueue.Done(obj)
 
-	workItem, ok := obj.(statusUpdateWorkItem)
-	if !ok {
-		// Invalid item, discard it
-		r.statusQueue.Forget(obj)
-		return true
-	}
-
 	// Process the status update with retry logic
-	err := r.processStatusUpdate(workItem)
+	err := r.processStatusUpdate(obj)
 	if err != nil {
 		// Retry the update on error
 		if r.statusQueue.NumRequeues(obj) < 5 {
 			log.Log.Error(err, "Error processing status update, retrying",
-				"configKey", workItem.configKey,
-				"updateType", workItem.updateType)
+				"configKey", obj.configKey,
+				"updateType", obj.updateType)
 			r.statusQueue.AddRateLimited(obj)
 		} else {
 			// Max retries exceeded, give up
 			log.Log.Error(err, "Max retries exceeded for status update",
-				"configKey", workItem.configKey,
-				"updateType", workItem.updateType)
+				"configKey", obj.configKey,
+				"updateType", obj.updateType)
 			r.statusQueue.Forget(obj)
 		}
 		return true
@@ -994,7 +987,7 @@ func (r *ReloaderConfigReconciler) workloadExists(ctx context.Context, kind, nam
 // SetupWithManager sets up the controller with the Manager.
 func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Initialize the status update queue
-	r.statusQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	r.statusQueue = workqueue.NewTypedRateLimitingQueue[statusUpdateWorkItem](workqueue.DefaultTypedControllerRateLimiter[statusUpdateWorkItem]())
 	r.ctx, r.cancelFunc = context.WithCancel(context.Background())
 
 	// Start the status update worker
