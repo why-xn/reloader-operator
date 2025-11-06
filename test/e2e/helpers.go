@@ -65,7 +65,7 @@ stringData:
 `, name, namespace)
 
 	for k, v := range data {
-		yaml += fmt.Sprintf("  %s: %s\n", k, v)
+		yaml += fmt.Sprintf("  %s: |\n    %s\n", k, v)
 	}
 
 	return yaml
@@ -82,7 +82,7 @@ data:
 `, name, namespace)
 
 	for k, v := range data {
-		yaml += fmt.Sprintf("  %s: %s\n", k, v)
+		yaml += fmt.Sprintf("  %s: |\n    %s\n", k, v)
 	}
 
 	return yaml
@@ -160,7 +160,8 @@ metadata:
 `
 
 	// Add environment variables if secret or configmap is specified
-	if opts.SecretName != "" || opts.ConfigMapName != "" || len(opts.AdditionalEnv) > 0 {
+	// Skip env vars if VolumeMount is true (volumes are used instead)
+	if !opts.VolumeMount && (opts.SecretName != "" || opts.ConfigMapName != "" || len(opts.AdditionalEnv) > 0) {
 		yaml += "        env:\n"
 
 		if opts.SecretName != "" {
@@ -215,14 +216,38 @@ metadata:
 
 	// Add volume mount if requested
 	if opts.VolumeMount {
-		if opts.SecretName != "" {
+		hasVolumes := false
+
+		if opts.SecretName != "" || opts.ConfigMapName != "" {
 			yaml += "        volumeMounts:\n"
-			yaml += fmt.Sprintf("        - name: secret-volume\n")
-			yaml += fmt.Sprintf("          mountPath: /etc/secrets\n")
+
+			if opts.SecretName != "" {
+				yaml += "        - name: secret-volume\n"
+				yaml += "          mountPath: /etc/secrets\n"
+				hasVolumes = true
+			}
+
+			if opts.ConfigMapName != "" {
+				yaml += "        - name: config-volume\n"
+				yaml += "          mountPath: /etc/config\n"
+				hasVolumes = true
+			}
+		}
+
+		if hasVolumes {
 			yaml += "      volumes:\n"
-			yaml += "      - name: secret-volume\n"
-			yaml += "        secret:\n"
-			yaml += fmt.Sprintf("          secretName: %s\n", opts.SecretName)
+
+			if opts.SecretName != "" {
+				yaml += "      - name: secret-volume\n"
+				yaml += "        secret:\n"
+				yaml += fmt.Sprintf("          secretName: %s\n", opts.SecretName)
+			}
+
+			if opts.ConfigMapName != "" {
+				yaml += "      - name: config-volume\n"
+				yaml += "        configMap:\n"
+				yaml += fmt.Sprintf("          name: %s\n", opts.ConfigMapName)
+			}
 		}
 	}
 
