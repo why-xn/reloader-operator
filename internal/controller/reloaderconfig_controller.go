@@ -23,15 +23,17 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/errors"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/builder"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/event"
 	"sigs.k8s.io/controller-runtime/pkg/handler"
 	"sigs.k8s.io/controller-runtime/pkg/log"
+	"sigs.k8s.io/controller-runtime/pkg/manager"
 	"sigs.k8s.io/controller-runtime/pkg/predicate"
 	"sigs.k8s.io/controller-runtime/pkg/reconcile"
 
@@ -41,6 +43,26 @@ import (
 	"github.com/stakater/Reloader/internal/pkg/workload"
 )
 
+// statusUpdateType defines the type of status update
+type statusUpdateType string
+
+const (
+	statusUpdateTypeReloaderConfig statusUpdateType = "reloaderconfig"
+	statusUpdateTypeTarget         statusUpdateType = "target"
+)
+
+// statusUpdateWorkItem represents a status update to be processed
+type statusUpdateWorkItem struct {
+	updateType        statusUpdateType
+	configKey         client.ObjectKey
+	resourceNamespace string
+	resourceKind      string
+	resourceName      string
+	newHash           string
+	target            *workload.Target
+	errorMsg          string
+}
+
 // ReloaderConfigReconciler reconciles a ReloaderConfig object
 type ReloaderConfigReconciler struct {
 	client.Client
@@ -48,6 +70,140 @@ type ReloaderConfigReconciler struct {
 	WorkloadFinder  *workload.Finder
 	WorkloadUpdater *workload.Updater
 	AlertManager    *alerts.Manager
+	statusQueue     workqueue.RateLimitingInterface
+	ctx             context.Context
+	cancelFunc      context.CancelFunc
+}
+
+// startStatusUpdateWorker runs a worker goroutine that processes status update queue items
+func (r *ReloaderConfigReconciler) startStatusUpdateWorker() {
+	for r.processNextStatusUpdate() {
+	}
+}
+
+// processNextStatusUpdate processes a single item from the status update queue
+func (r *ReloaderConfigReconciler) processNextStatusUpdate() bool {
+	obj, shutdown := r.statusQueue.Get()
+	if shutdown {
+		return false
+	}
+	defer r.statusQueue.Done(obj)
+
+	workItem, ok := obj.(statusUpdateWorkItem)
+	if !ok {
+		// Invalid item, discard it
+		r.statusQueue.Forget(obj)
+		return true
+	}
+
+	// Process the status update with retry logic
+	err := r.processStatusUpdate(workItem)
+	if err != nil {
+		// Retry the update on error
+		if r.statusQueue.NumRequeues(obj) < 5 {
+			log.Log.Error(err, "Error processing status update, retrying",
+				"configKey", workItem.configKey,
+				"updateType", workItem.updateType)
+			r.statusQueue.AddRateLimited(obj)
+		} else {
+			// Max retries exceeded, give up
+			log.Log.Error(err, "Max retries exceeded for status update",
+				"configKey", workItem.configKey,
+				"updateType", workItem.updateType)
+			r.statusQueue.Forget(obj)
+		}
+		return true
+	}
+
+	// Success - remove from queue
+	r.statusQueue.Forget(obj)
+	return true
+}
+
+// processStatusUpdate performs the actual status update for a work item
+func (r *ReloaderConfigReconciler) processStatusUpdate(workItem statusUpdateWorkItem) error {
+	ctx := context.Background()
+
+	// Fetch fresh ReloaderConfig to avoid conflicts
+	config := &reloaderv1alpha1.ReloaderConfig{}
+	if err := r.Get(ctx, workItem.configKey, config); err != nil {
+		if apierrors.IsNotFound(err) {
+			// Config was deleted, nothing to update
+			return nil
+		}
+		return err
+	}
+
+	// Apply the update based on type
+	switch workItem.updateType {
+	case statusUpdateTypeReloaderConfig:
+		return r.updateReloaderConfigStatusDirect(ctx, config, workItem.resourceNamespace, workItem.resourceKind, workItem.resourceName, workItem.newHash)
+	case statusUpdateTypeTarget:
+		return r.updateTargetStatusDirect(ctx, config, workItem.target, workItem.errorMsg)
+	default:
+		return fmt.Errorf("unknown status update type: %s", workItem.updateType)
+	}
+}
+
+// updateReloaderConfigStatusDirect performs direct status update for ReloaderConfig-level fields
+func (r *ReloaderConfigReconciler) updateReloaderConfigStatusDirect(ctx context.Context, config *reloaderv1alpha1.ReloaderConfig, resourceNamespace, resourceKind, resourceName, newHash string) error {
+	if config.Status.WatchedResourceHashes == nil {
+		config.Status.WatchedResourceHashes = make(map[string]string)
+	}
+
+	hashKey := fmt.Sprintf("%s/%s/%s", resourceNamespace, resourceKind, resourceName)
+	config.Status.WatchedResourceHashes[hashKey] = newHash
+	config.Status.ReloadCount++
+
+	now := metav1.Now()
+	config.Status.LastReloadTime = &now
+
+	return r.Status().Update(ctx, config)
+}
+
+// updateTargetStatusDirect performs direct status update for a specific target
+func (r *ReloaderConfigReconciler) updateTargetStatusDirect(ctx context.Context, config *reloaderv1alpha1.ReloaderConfig, target *workload.Target, errorMsg string) error {
+	// Find or create target status entry
+	var targetStatus *reloaderv1alpha1.TargetWorkloadStatus
+	for i := range config.Status.TargetStatus {
+		if config.Status.TargetStatus[i].Kind == target.Kind &&
+			config.Status.TargetStatus[i].Name == target.Name &&
+			config.Status.TargetStatus[i].Namespace == target.Namespace {
+			targetStatus = &config.Status.TargetStatus[i]
+			break
+		}
+	}
+
+	if targetStatus == nil {
+		// Create new target status entry
+		config.Status.TargetStatus = append(config.Status.TargetStatus, reloaderv1alpha1.TargetWorkloadStatus{
+			Kind:      target.Kind,
+			Name:      target.Name,
+			Namespace: target.Namespace,
+		})
+		targetStatus = &config.Status.TargetStatus[len(config.Status.TargetStatus)-1]
+	}
+
+	// Update target status
+	if errorMsg != "" {
+		targetStatus.LastError = errorMsg
+	} else {
+		targetStatus.LastError = ""
+		targetStatus.ReloadCount++
+		now := metav1.Now()
+		targetStatus.LastReloadTime = &now
+
+		// Update pause period if configured
+		if target.PausePeriod != "" {
+			duration, err := time.ParseDuration(target.PausePeriod)
+			if err == nil {
+				pausedUntil := metav1.NewTime(now.Add(duration))
+				targetStatus.PausedUntil = &pausedUntil
+			}
+		}
+	}
+
+	return r.Status().Update(ctx, config)
 }
 
 // RBAC permissions for ReloaderConfig CRD
@@ -119,7 +275,7 @@ func (r *ReloaderConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.reconcileReloaderConfig(ctx, reloaderConfig)
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		logger.Error(err, "Failed to get resource")
 		return ctrl.Result{}, err
 	}
@@ -134,7 +290,7 @@ func (r *ReloaderConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		return r.reconcileSecret(ctx, secret)
 	}
 
-	if !errors.IsNotFound(err) {
+	if !apierrors.IsNotFound(err) {
 		logger.Error(err, "Failed to get Secret")
 		return ctrl.Result{}, err
 	}
@@ -396,10 +552,12 @@ func (r *ReloaderConfigReconciler) reconcileSecret(
 		"fromCRD", len(reloaderConfigs))
 
 	// Phase 3: Execute reloads for all discovered targets
-	r.executeReloads(ctx, allTargets, util.KindSecret, secret.Name, currentHash)
+	successCount := r.executeReloads(ctx, allTargets, util.KindSecret, secret.Name, currentHash)
 
-	// Phase 4: Update ReloaderConfig statuses
-	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
+	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
+	if successCount > 0 {
+		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
+	}
 
 	// Phase 5: Persist new hash in Secret annotation for future comparisons
 	if err := r.updateResourceHash(ctx, secret, currentHash); err != nil {
@@ -450,10 +608,12 @@ func (r *ReloaderConfigReconciler) reconcileConfigMap(
 		"fromCRD", len(reloaderConfigs))
 
 	// Phase 3: Execute reloads for all discovered targets
-	r.executeReloads(ctx, allTargets, util.KindConfigMap, configMap.Name, currentHash)
+	successCount := r.executeReloads(ctx, allTargets, util.KindConfigMap, configMap.Name, currentHash)
 
-	// Phase 4: Update ReloaderConfig statuses
-	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
+	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
+	if successCount > 0 {
+		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
+	}
 
 	// Phase 5: Persist new hash in ConfigMap annotation for future comparisons
 	if err := r.updateResourceHash(ctx, configMap, currentHash); err != nil {
@@ -574,16 +734,37 @@ func (r *ReloaderConfigReconciler) discoverTargets(
 // Why we handle errors gracefully:
 // If one target fails to reload, we continue with other targets.
 // This prevents one bad workload from blocking all reloads.
+//
+// Returns the number of successful reloads.
 func (r *ReloaderConfigReconciler) executeReloads(
 	ctx context.Context,
 	targets []workload.Target,
 	resourceKind string,
 	resourceName string,
 	resourceHash string,
-) {
+) int {
 	logger := log.FromContext(ctx)
+	successCount := 0
 
 	for _, target := range targets {
+		// Refetch the ReloaderConfig to get the latest status (including PausedUntil)
+		// This ensures we have fresh pause period information from the API server
+		if target.Config != nil {
+			freshConfig := &reloaderv1alpha1.ReloaderConfig{}
+			configKey := client.ObjectKey{
+				Name:      target.Config.Name,
+				Namespace: target.Config.Namespace,
+			}
+			if err := r.Get(ctx, configKey, freshConfig); err != nil {
+				logger.Error(err, "Failed to fetch fresh ReloaderConfig for pause check",
+					"config", target.Config.Name)
+				// Continue with existing config rather than blocking the reload
+			} else {
+				// Update the target's Config reference with fresh data
+				target.Config = freshConfig
+			}
+		}
+
 		// Check if workload is in pause period (rate limiting)
 		isPaused, err := r.WorkloadUpdater.IsPaused(ctx, target)
 		if err != nil {
@@ -620,7 +801,10 @@ func (r *ReloaderConfigReconciler) executeReloads(
 			"strategy", target.ReloadStrategy)
 
 		r.handleReloadSuccess(ctx, target, resourceKind, resourceName)
+		successCount++
 	}
+
+	return successCount
 }
 
 // handleReloadError handles failed reload attempts
@@ -720,22 +904,23 @@ func (r *ReloaderConfigReconciler) updateReloaderConfigStatuses(
 	resourceName string,
 	newHash string,
 ) {
-	logger := log.FromContext(ctx)
-
+	// Enqueue status update work items instead of updating directly
 	for _, config := range configs {
-		// Update hash for this specific resource
-		resourceKey := util.MakeResourceKey(resourceNamespace, resourceKind, resourceName)
-		config.Status.WatchedResourceHashes[resourceKey] = newHash
-
-		// Increment reload counter and update timestamp
-		config.Status.ReloadCount++
-		now := metav1.Now()
-		config.Status.LastReloadTime = &now
-
-		// Persist status update
-		if err := r.Status().Update(ctx, config); err != nil {
-			logger.Error(err, "Failed to update ReloaderConfig status", "config", config.Name)
+		configKey := client.ObjectKey{
+			Namespace: config.Namespace,
+			Name:      config.Name,
 		}
+
+		workItem := statusUpdateWorkItem{
+			updateType:        statusUpdateTypeReloaderConfig,
+			configKey:         configKey,
+			resourceNamespace: resourceNamespace,
+			resourceKind:      resourceKind,
+			resourceName:      resourceName,
+			newHash:           newHash,
+		}
+
+		r.statusQueue.Add(workItem)
 	}
 }
 
@@ -808,6 +993,23 @@ func (r *ReloaderConfigReconciler) workloadExists(ctx context.Context, kind, nam
 
 // SetupWithManager sets up the controller with the Manager.
 func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
+	// Initialize the status update queue
+	r.statusQueue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+	r.ctx, r.cancelFunc = context.WithCancel(context.Background())
+
+	// Start the status update worker
+	go r.startStatusUpdateWorker()
+
+	// Register cleanup on manager stop
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		<-ctx.Done()
+		r.cancelFunc()
+		r.statusQueue.ShutDown()
+		return nil
+	})); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		// Watch ReloaderConfig CRD
 		For(&reloaderv1alpha1.ReloaderConfig{}).
@@ -923,64 +1125,18 @@ func (r *ReloaderConfigReconciler) updateTargetStatus(
 	target workload.Target,
 	errorMsg string,
 ) {
-	logger := log.FromContext(ctx)
-
-	// Find existing status entry
-	found := false
-	for i := range config.Status.TargetStatus {
-		status := &config.Status.TargetStatus[i]
-		if status.Kind == target.Kind &&
-			status.Name == target.Name &&
-			status.Namespace == target.Namespace {
-
-			// Update existing entry
-			now := metav1.Now()
-			status.LastReloadTime = &now
-			status.ReloadCount++
-			status.LastError = errorMsg
-
-			// Set pause period if configured
-			if target.PausePeriod != "" && errorMsg == "" {
-				duration, err := util.ParseDuration(target.PausePeriod)
-				if err == nil {
-					pausedUntil := metav1.NewTime(now.Add(duration))
-					status.PausedUntil = &pausedUntil
-				}
-			}
-
-			found = true
-			break
-		}
+	// Enqueue status update work item instead of updating directly
+	configKey := client.ObjectKey{
+		Namespace: config.Namespace,
+		Name:      config.Name,
 	}
 
-	// Add new entry if not found
-	if !found {
-		now := metav1.Now()
-		newStatus := reloaderv1alpha1.TargetWorkloadStatus{
-			Kind:           target.Kind,
-			Name:           target.Name,
-			Namespace:      target.Namespace,
-			LastReloadTime: &now,
-			ReloadCount:    1,
-			LastError:      errorMsg,
-		}
-
-		// Set pause period if configured
-		if target.PausePeriod != "" && errorMsg == "" {
-			duration, err := util.ParseDuration(target.PausePeriod)
-			if err == nil {
-				pausedUntil := metav1.NewTime(now.Add(duration))
-				newStatus.PausedUntil = &pausedUntil
-			}
-		}
-
-		config.Status.TargetStatus = append(config.Status.TargetStatus, newStatus)
+	workItem := statusUpdateWorkItem{
+		updateType: statusUpdateTypeTarget,
+		configKey:  configKey,
+		target:     &target,
+		errorMsg:   errorMsg,
 	}
 
-	// Update the ReloaderConfig status
-	if err := r.Status().Update(ctx, config); err != nil {
-		logger.Error(err, "Failed to update target status",
-			"config", config.Name,
-			"target", target.Name)
-	}
+	r.statusQueue.Add(workItem)
 }

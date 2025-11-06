@@ -249,7 +249,7 @@ type TargetWorkloadStatus struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:resource:shortName=rc;rlc
 // +kubebuilder:printcolumn:name="Strategy",type="string",JSONPath=".spec.reloadStrategy",description="Reload strategy"
-// +kubebuilder:printcolumn:name="Targets",type="integer",JSONPath=".spec.targets[*]",description="Number of target workloads"
+// +kubebuilder:printcolumn:name="Targets",type="string",JSONPath=".spec.targets[*].name",description="Target workload names"
 // +kubebuilder:printcolumn:name="Reloads",type="integer",JSONPath=".status.reloadCount",description="Total reloads triggered"
 // +kubebuilder:printcolumn:name="Last Reload",type="date",JSONPath=".status.lastReloadTime",description="Last reload time"
 // +kubebuilder:printcolumn:name="Age",type="date",JSONPath=".metadata.creationTimestamp"

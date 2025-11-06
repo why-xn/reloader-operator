@@ -270,13 +270,18 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 				if err != nil {
 					return false
 				}
-				return status.ReloadCount == 1
+				// Check per-target reload count (more reliable than top-level count)
+			if len(status.TargetStatus) == 0 {
+				return false
+			}
+			return status.TargetStatus[0].ReloadCount == 1
 			}, 1*time.Minute, 2*time.Second).Should(BeTrue())
 
 			By("capturing reload count after first reload")
 			firstStatus, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
-			firstReloadCount := firstStatus.ReloadCount
+			Expect(len(firstStatus.TargetStatus)).To(BeNumerically(">", 0))
+		firstReloadCount := firstStatus.TargetStatus[0].ReloadCount
 
 			By("immediately triggering second reload (should be skipped)")
 			updatedSecretYAML2 := GenerateSecret(secretName, testNS, map[string]string{
@@ -290,7 +295,8 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			By("verifying second reload was skipped due to pause period")
 			secondStatus, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(secondStatus.ReloadCount).To(Equal(firstReloadCount), "Reload count should not increase during pause period")
+			Expect(len(secondStatus.TargetStatus)).To(BeNumerically(">", 0))
+		Expect(secondStatus.TargetStatus[0].ReloadCount).To(Equal(firstReloadCount), "Reload count should not increase during pause period")
 		})
 
 		It("should handle multiple ReloaderConfigs watching the same resource", func() {

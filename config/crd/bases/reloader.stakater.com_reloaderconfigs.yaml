@@ -22,10 +22,10 @@ spec:
       jsonPath: .spec.reloadStrategy
       name: Strategy
       type: string
-    - description: Number of target workloads
-      jsonPath: .spec.targets[*]
+    - description: Target workload names
+      jsonPath: .spec.targets[*].name
       name: Targets
-      type: integer
+      type: string
     - description: Total reloads triggered
       jsonPath: .status.reloadCount
       name: Reloads
