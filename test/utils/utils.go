@@ -224,3 +224,26 @@ func UncommentCode(filename, target, prefix string) error {
 
 	return nil
 }
+
+// StringSlicesEqual checks if two string slices contain the same elements (order independent)
+func StringSlicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+
+	// Create a map to count occurrences in slice a
+	counts := make(map[string]int)
+	for _, item := range a {
+		counts[item]++
+	}
+
+	// Check if slice b has the same elements
+	for _, item := range b {
+		if counts[item] == 0 {
+			return false
+		}
+		counts[item]--
+	}
+
+	return true
+}

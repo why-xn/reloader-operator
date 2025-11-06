@@ -422,5 +422,103 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(status.TargetStatus).To(HaveLen(2))
 		})
+
+		It("should reload Deployment using restart strategy without modifying template", func() {
+			secretName := "restart-strategy-secret"
+			deploymentName := "restart-strategy-deploy"
+			reloaderConfigName := "restart-strategy-config"
+
+			By("creating a Secret")
+			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+				"password": "initial-value",
+			})
+			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
+
+			By("creating a Deployment that uses the Secret")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:   2,
+				SecretName: secretName,
+				SecretKey:  "password",
+				EnvVarName: "DB_PASSWORD",
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("capturing initial deployment generation")
+			initialGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("creating a ReloaderConfig with restart strategy")
+			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+				WatchedSecrets: []string{secretName},
+				Targets: []Target{
+					{
+						Kind: "Deployment",
+						Name: deploymentName,
+					},
+				},
+				ReloadStrategy: "restart",
+			})
+			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
+
+			By("waiting for ReloaderConfig status to be initialized")
+			Eventually(func() bool {
+				status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
+				if err != nil {
+					return false
+				}
+				return len(status.WatchedResourceHashes) > 0
+			}, 30*time.Second, 1*time.Second).Should(BeTrue())
+
+			By("updating the Secret")
+			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+				"password": "updated-value",
+			})
+			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
+
+			By("waiting for ReloaderConfig to trigger reload")
+			Eventually(func() bool {
+				status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
+				if err != nil {
+					return false
+				}
+				return status.ReloadCount > 0
+			}, 1*time.Minute, 2*time.Second).Should(BeTrue())
+
+			By("waiting for pods to be recreated")
+			Eventually(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				// Check if UIDs changed (pods were recreated)
+				return len(currentUIDs) == 2 && !utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
+
+			By("verifying new pods were created")
+			newUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newUIDs).To(HaveLen(2))
+			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after restart")
+
+			By("verifying deployment template was NOT modified (restart strategy)")
+			currentGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
+
+			By("verifying no env var was added to pod template")
+			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"), "RELOADER_TRIGGERED_AT should not be added with restart strategy")
+		})
 	})
 })

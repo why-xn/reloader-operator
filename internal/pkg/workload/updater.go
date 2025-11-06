@@ -23,6 +23,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
@@ -47,6 +48,9 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceHash
 	if strategy == "" {
 		strategy = util.ReloadStrategyEnvVars
 	}
+
+	// Normalize strategy for backward compatibility (e.g., "rollout" -> "env-vars")
+	strategy = util.NormalizeStrategy(strategy)
 
 	logger.Info("Triggering reload",
 		"kind", target.Kind,
@@ -83,7 +87,12 @@ func (u *Updater) reloadDeployment(
 		return fmt.Errorf("failed to get Deployment: %w", err)
 	}
 
-	// Apply the reload strategy
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, deployment.Spec.Selector, namespace, "Deployment", name)
+	}
+
+	// Apply the reload strategy (env-vars or annotations)
 	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, hash); err != nil {
 		return err
 	}
@@ -114,7 +123,12 @@ func (u *Updater) reloadStatefulSet(
 		return fmt.Errorf("failed to get StatefulSet: %w", err)
 	}
 
-	// Apply the reload strategy
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, statefulSet.Spec.Selector, namespace, "StatefulSet", name)
+	}
+
+	// Apply the reload strategy (env-vars or annotations)
 	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, hash); err != nil {
 		return err
 	}
@@ -145,7 +159,12 @@ func (u *Updater) reloadDaemonSet(
 		return fmt.Errorf("failed to get DaemonSet: %w", err)
 	}
 
-	// Apply the reload strategy
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, daemonSet.Spec.Selector, namespace, "DaemonSet", name)
+	}
+
+	// Apply the reload strategy (env-vars or annotations)
 	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, hash); err != nil {
 		return err
 	}
@@ -261,4 +280,69 @@ func (u *Updater) IsPaused(ctx context.Context, target Target) (bool, error) {
 	_ = duration // Will use this when updating status
 
 	return false, nil
+}
+
+// restartWorkloadPods deletes all pods for a workload, triggering recreation with updated configs
+// This implements the "restart" strategy which is most GitOps-friendly as it doesn't modify templates
+func (u *Updater) restartWorkloadPods(
+	ctx context.Context,
+	selector *metav1.LabelSelector,
+	namespace, kind, name string,
+) error {
+	logger := log.FromContext(ctx)
+
+	// Convert label selector to client.MatchingLabels
+	if selector == nil || selector.MatchLabels == nil {
+		return fmt.Errorf("workload has no label selector")
+	}
+
+	// List all pods matching the workload's selector
+	podList := &corev1.PodList{}
+	listOpts := []client.ListOption{
+		client.InNamespace(namespace),
+		client.MatchingLabels(selector.MatchLabels),
+	}
+
+	if err := u.List(ctx, podList, listOpts...); err != nil {
+		return fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	if len(podList.Items) == 0 {
+		logger.Info("No pods found to restart",
+			"kind", kind,
+			"name", name,
+			"namespace", namespace)
+		return nil
+	}
+
+	// Delete each pod - Kubernetes will recreate them
+	deletedCount := 0
+	for i := range podList.Items {
+		pod := &podList.Items[i]
+
+		if err := u.Delete(ctx, pod); err != nil {
+			logger.Error(err, "Failed to delete pod",
+				"pod", pod.Name,
+				"namespace", namespace)
+			// Continue with other pods even if one fails
+			continue
+		}
+		deletedCount++
+		logger.V(1).Info("Deleted pod for restart",
+			"pod", pod.Name,
+			"namespace", namespace)
+	}
+
+	logger.Info("Successfully triggered workload restart",
+		"kind", kind,
+		"name", name,
+		"namespace", namespace,
+		"podsDeleted", deletedCount,
+		"totalPods", len(podList.Items))
+
+	if deletedCount == 0 {
+		return fmt.Errorf("failed to delete any pods")
+	}
+
+	return nil
 }

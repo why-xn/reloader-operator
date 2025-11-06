@@ -34,10 +34,11 @@ type ReloaderConfigSpec struct {
 	Targets []TargetWorkload `json:"targets,omitempty"`
 
 	// ReloadStrategy specifies how to trigger rolling updates
-	// Valid values are: "env-vars" (default), "annotations"
+	// Valid values are: "env-vars" (default), "annotations", "restart"
 	// - env-vars: Updates a dummy environment variable to trigger pod restart
 	// - annotations: Updates pod template annotations (better for GitOps)
-	// +kubebuilder:validation:Enum=env-vars;annotations
+	// - restart: Deletes pods without modifying template (most GitOps-friendly)
+	// +kubebuilder:validation:Enum=env-vars;annotations;restart
 	// +kubebuilder:default=env-vars
 	// +optional
 	ReloadStrategy string `json:"reloadStrategy,omitempty"`
@@ -104,7 +105,7 @@ type TargetWorkload struct {
 	Namespace string `json:"namespace,omitempty"`
 
 	// ReloadStrategy overrides the global reload strategy for this specific workload
-	// +kubebuilder:validation:Enum=env-vars;annotations
+	// +kubebuilder:validation:Enum=env-vars;annotations;restart
 	// +optional
 	ReloadStrategy string `json:"reloadStrategy,omitempty"`
 

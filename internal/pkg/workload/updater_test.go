@@ -25,6 +25,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/client/fake"
 
 	"github.com/stakater/Reloader/internal/pkg/util"
@@ -391,5 +392,193 @@ func TestIsPaused(t *testing.T) {
 				t.Errorf("expected paused=%v, got %v", tt.expectedPaused, isPaused)
 			}
 		})
+	}
+}
+
+func TestTriggerReloadRestartStrategy(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-app",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": "test"},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "test"},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:latest",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	// Create some pods for the deployment
+	pod1 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-app-pod-1",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "nginx", Image: "nginx:latest"},
+			},
+		},
+	}
+
+	pod2 := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-app-pod-2",
+			Namespace: "default",
+			Labels:    map[string]string{"app": "test"},
+		},
+		Spec: corev1.PodSpec{
+			Containers: []corev1.Container{
+				{Name: "nginx", Image: "nginx:latest"},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().
+		WithScheme(scheme).
+		WithRuntimeObjects(deployment, pod1, pod2).
+		Build()
+	updater := NewUpdater(fakeClient)
+
+	target := Target{
+		Kind:           util.KindDeployment,
+		Name:           "test-app",
+		Namespace:      "default",
+		ReloadStrategy: util.ReloadStrategyRestart,
+	}
+
+	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the deployment template was NOT updated (restart strategy doesn't modify template)
+	updatedDeployment := &appsv1.Deployment{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      "test-app",
+		Namespace: "default",
+	}, updatedDeployment)
+	if err != nil {
+		t.Fatalf("failed to get updated deployment: %v", err)
+	}
+
+	// Check that env var was NOT added (restart strategy doesn't modify template)
+	for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
+		for _, env := range container.Env {
+			if env.Name == util.EnvReloaderTriggeredAt {
+				t.Error("restart strategy should not modify pod template with env vars")
+			}
+		}
+	}
+
+	// Check that annotations were NOT added (restart strategy doesn't modify template)
+	if updatedDeployment.Spec.Template.Annotations != nil {
+		if _, exists := updatedDeployment.Spec.Template.Annotations[util.AnnotationLastReload]; exists {
+			t.Error("restart strategy should not modify pod template annotations")
+		}
+	}
+
+	// Verify pods were deleted (fake client removes them on delete)
+	podList := &corev1.PodList{}
+	err = fakeClient.List(context.Background(), podList,
+		client.InNamespace("default"),
+		client.MatchingLabels(map[string]string{"app": "test"}))
+	if err != nil {
+		t.Fatalf("failed to list pods: %v", err)
+	}
+
+	// In fake client, pods are actually removed when deleted
+	if len(podList.Items) == 2 {
+		t.Error("pods should have been deleted with restart strategy")
+	}
+}
+
+func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
+	scheme := runtime.NewScheme()
+	_ = corev1.AddToScheme(scheme)
+	_ = appsv1.AddToScheme(scheme)
+
+	deployment := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "test-app",
+			Namespace: "default",
+		},
+		Spec: appsv1.DeploymentSpec{
+			Selector: &metav1.LabelSelector{
+				MatchLabels: map[string]string{"app": "test"},
+			},
+			Template: corev1.PodTemplateSpec{
+				ObjectMeta: metav1.ObjectMeta{
+					Labels: map[string]string{"app": "test"},
+				},
+				Spec: corev1.PodSpec{
+					Containers: []corev1.Container{
+						{
+							Name:  "nginx",
+							Image: "nginx:latest",
+						},
+					},
+				},
+			},
+		},
+	}
+
+	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(deployment).Build()
+	updater := NewUpdater(fakeClient)
+
+	// Use "rollout" strategy (backward compatibility alias for "env-vars")
+	target := Target{
+		Kind:           util.KindDeployment,
+		Name:           "test-app",
+		Namespace:      "default",
+		ReloadStrategy: util.ReloadStrategyRollout,
+	}
+
+	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Verify the deployment was updated
+	updatedDeployment := &appsv1.Deployment{}
+	err = fakeClient.Get(context.Background(), types.NamespacedName{
+		Name:      "test-app",
+		Namespace: "default",
+	}, updatedDeployment)
+	if err != nil {
+		t.Fatalf("failed to get updated deployment: %v", err)
+	}
+
+	// Check that RELOADER_TRIGGERED_AT env var was added (rollout maps to env-vars)
+	found := false
+	for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
+		for _, env := range container.Env {
+			if env.Name == util.EnvReloaderTriggeredAt {
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		t.Error("rollout strategy (alias for env-vars) should add RELOADER_TRIGGERED_AT env var")
 	}
 }

@@ -230,12 +230,14 @@ spec:
                 default: env-vars
                 description: |-
                   ReloadStrategy specifies how to trigger rolling updates
-                  Valid values are: "env-vars" (default), "annotations"
+                  Valid values are: "env-vars" (default), "annotations", "restart"
                   - env-vars: Updates a dummy environment variable to trigger pod restart
                   - annotations: Updates pod template annotations (better for GitOps)
+                  - restart: Deletes pods without modifying template (most GitOps-friendly)
                 enum:
                 - env-vars
                 - annotations
+                - restart
                 type: string
               targets:
                 description: Targets specifies which workloads should be reloaded
@@ -273,6 +275,7 @@ spec:
                       enum:
                       - env-vars
                       - annotations
+                      - restart
                       type: string
                   required:
                   - kind

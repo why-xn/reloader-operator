@@ -29,7 +29,7 @@ const (
 	AnnotationSearch         = "reloader.stakater.com/search"
 	AnnotationMatch          = "reloader.stakater.com/match"
 	AnnotationIgnore         = "reloader.stakater.com/ignore"
-	AnnotationReloadStrategy = "reloader.stakater.com/reload-strategy"
+	AnnotationReloadStrategy = "reloader.stakater.com/rollout-strategy"
 	AnnotationLastReload     = "reloader.stakater.com/last-reload"
 	AnnotationResourceHash   = "reloader.stakater.com/resource-hash"
 
@@ -64,6 +64,10 @@ const (
 const (
 	ReloadStrategyEnvVars     = "env-vars"
 	ReloadStrategyAnnotations = "annotations"
+	ReloadStrategyRestart     = "restart"
+
+	// Backward compatibility aliases (original Reloader values)
+	ReloadStrategyRollout = "rollout" // Alias for env-vars
 )
 
 // GetDefaultNamespace returns the namespace from target or falls back to default
@@ -74,13 +78,27 @@ func GetDefaultNamespace(targetNamespace, defaultNamespace string) string {
 	return defaultNamespace
 }
 
+// NormalizeStrategy converts strategy aliases to canonical values for backward compatibility
+func NormalizeStrategy(strategy string) string {
+	switch strategy {
+	case ReloadStrategyRollout:
+		// Original Reloader used "rollout", map it to our "env-vars"
+		return ReloadStrategyEnvVars
+	case ReloadStrategyEnvVars, ReloadStrategyAnnotations, ReloadStrategyRestart:
+		return strategy
+	default:
+		// Unknown strategy, return as-is (will be validated elsewhere)
+		return strategy
+	}
+}
+
 // GetDefaultStrategy returns the strategy from target or falls back to default
 func GetDefaultStrategy(targetStrategy, defaultStrategy string) string {
 	if targetStrategy != "" {
-		return targetStrategy
+		return NormalizeStrategy(targetStrategy)
 	}
 	if defaultStrategy != "" {
-		return defaultStrategy
+		return NormalizeStrategy(defaultStrategy)
 	}
 	return ReloadStrategyEnvVars // ultimate default
 }

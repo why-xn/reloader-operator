@@ -64,6 +64,9 @@ type ReloaderConfigReconciler struct {
 // +kubebuilder:rbac:groups=apps,resources=statefulsets,verbs=get;list;watch;update;patch
 // +kubebuilder:rbac:groups=apps,resources=daemonsets,verbs=get;list;watch;update;patch
 
+// RBAC permissions for Pods (required for restart strategy)
+// +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
+
 // RBAC permissions for Argo Rollouts (optional)
 // +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch;update;patch
 

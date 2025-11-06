@@ -655,5 +655,68 @@ spec:
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different even for non-referenced Secret")
 		})
+
+		It("should reload Deployment using restart strategy without modifying template", func() {
+			secretName := "restart-strategy-secret"
+			deploymentName := "restart-strategy-app"
+
+			By("creating a Secret")
+			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+				"password": "initial-value",
+			})
+			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
+
+			By("creating a Deployment with restart strategy annotation")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:   2,
+				SecretName: secretName,
+				Annotations: map[string]string{
+					"secret.reloader.stakater.com/reload":     secretName,
+					"reloader.stakater.com/rollout-strategy": "restart",
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("capturing initial deployment generation")
+			initialGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("updating the Secret")
+			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+				"password": "updated-value",
+			})
+			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
+
+			By("waiting for pods to be recreated")
+			Eventually(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				// Check if UIDs changed (pods were recreated)
+				return len(currentUIDs) == 2 && !utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
+
+			By("verifying new pods were created")
+			newUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newUIDs).To(HaveLen(2))
+			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after restart")
+
+			By("verifying deployment template was NOT modified (restart strategy)")
+			currentGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
+		})
 	})
 })

@@ -477,11 +477,17 @@ spec:
 
 These annotations control HOW the reload is triggered.
 
-### 5.1 `reloader.stakater.com/reload-strategy`
+### 5.1 `reloader.stakater.com/rollout-strategy`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** `"env-vars"`, `"annotations"`, or `"restart"`
-**Status:** ⚠️ **Partial** - `env-vars` and `annotations` supported, `restart` missing
+**Value:** `"env-vars"`, `"annotations"`, `"restart"`, or `"rollout"` (backward compatibility)
+**Status:** ✅ **Fully Implemented**
+
+**Backward Compatibility:**
+- Original Reloader uses `"rollout"` (default) and `"restart"`
+- We support both original values PLUS enhanced options
+- `"rollout"` maps to `"env-vars"` for backward compatibility
+- `"restart"` works identically in both versions
 
 **What it does:**
 - Controls how Kubernetes rolling update is triggered
@@ -492,16 +498,20 @@ These annotations control HOW the reload is triggered.
    - Adds/updates environment variable: `RELOADER_TRIGGERED_AT=<timestamp>`
    - Forces pod restart via spec change
    - Works with all Kubernetes versions
+   - **Alias:** `"rollout"` (for backward compatibility with original Reloader)
 
 2. **`annotations`** - ✅ Supported
    - Updates pod template annotation: `reloader.stakater.com/last-reload=<timestamp>`
    - GitOps-friendly (ArgoCD/Flux ignore annotation changes)
    - Cleaner pod spec
+   - **Enhancement:** Not available in original Reloader
 
-3. **`restart`** - ❌ Missing
+3. **`restart`** - ✅ Supported
    - Deletes pods without changing pod template
-   - Most GitOps-friendly (no template changes at all)
+   - **Most GitOps-friendly** (no template changes at all)
    - Uses `kubectl rollout restart` equivalent
+   - Kubernetes recreates pods with updated ConfigMap/Secret data
+   - **Same as original Reloader**
 
 **Example:**
 ```yaml
@@ -511,16 +521,16 @@ metadata:
   name: my-app
   annotations:
     reloader.stakater.com/auto: "true"
-    reloader.stakater.com/reload-strategy: "annotations"  # Use annotations strategy
+    reloader.stakater.com/rollout-strategy: "annotations"  # Use annotations strategy
 ```
 
 **Code Location:**
 - Constant: `internal/pkg/util/helpers.go:32` - `AnnotationReloadStrategy`
-- Constants: `internal/pkg/util/helpers.go:64-66` - Strategy values
-- Used in: `internal/pkg/workload/finder.go:237-239,267-269,296-298`
-- Applied in: `internal/pkg/workload/updater.go` (TriggerReload method)
-
-**Missing:** `restart` strategy implementation
+- Constants: `internal/pkg/util/helpers.go:65-70` - Strategy values (including `ReloadStrategyRestart` and `ReloadStrategyRollout` alias)
+- Normalization: `internal/pkg/util/helpers.go:82-93` - `NormalizeStrategy()` function
+- Used in: `internal/pkg/workload/finder.go:238,267,296`
+- Applied in: `internal/pkg/workload/updater.go:43-70` - TriggerReload method
+- Restart implementation: `internal/pkg/workload/updater.go:282-345` - `restartWorkloadPods()` function
 
 ---
 
@@ -750,7 +760,7 @@ data:
 | `reloader.stakater.com/ignore` | ConfigMap/Secret | ⚠️ Partial | **HIGH** |
 | `configmaps.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
 | `secrets.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
-| `reloader.stakater.com/reload-strategy` | Workload | ⚠️ Partial (no restart) | **LOW** |
+| `reloader.stakater.com/rollout-strategy` | Workload | ✅ Implemented | **LOW** |
 | `deployment.reloader.stakater.com/pause-period` | Deployment | 🐛 Broken | **CRITICAL** |
 | `statefulset.reloader.stakater.com/pause-period` | StatefulSet | 🐛 Broken | **CRITICAL** |
 | `daemonset.reloader.stakater.com/pause-period` | DaemonSet | 🐛 Broken | **CRITICAL** |
@@ -765,8 +775,8 @@ data:
 ## 9. Implementation Statistics
 
 ### By Status
-- ✅ **Fully Implemented:** 1 annotation (5%)
-- ⚠️ **Partially Implemented:** 9 annotations (47%)
+- ✅ **Fully Implemented:** 2 annotations (10%)
+- ⚠️ **Partially Implemented:** 8 annotations (42%)
 - 🐛 **Broken:** 3 annotations (16%)
 - ❌ **Missing:** 6 annotations (32%)
 
@@ -832,7 +842,7 @@ reloader.stakater.com/ignore: "true"
 
 ### Use Case: GitOps-friendly reload (avoid ArgoCD drift detection)
 ```yaml
-reloader.stakater.com/reload-strategy: "annotations"
+reloader.stakater.com/rollout-strategy: "annotations"
 ```
 **Status:** ✅ Works
 
@@ -844,14 +854,21 @@ reloader.stakater.com/reload-strategy: "annotations"
 
 **What works without changes:**
 - ✅ Named reload annotations (`secret.reloader.stakater.com/reload`)
-- ✅ Reload strategy annotation (env-vars and annotations)
+- ✅ Rollout strategy annotation - `"rollout"` value supported via alias
+- ✅ Restart strategy - works identically (`"restart"` value)
+- ✅ All reload strategies fully backward compatible
 - ✅ Basic functionality
 
 **What requires changes:**
-- ⚠️ Auto annotations need ReloaderConfig CRD created
+- ⚠️ Auto annotations need ReloaderConfig CRD created (but work once CRD exists)
 - ⚠️ Regex patterns in reload lists won't work (yet)
 - ⚠️ Ignore annotation on ConfigMaps/Secrets won't work (yet)
 - ⚠️ Pause periods won't work (bug in progress)
+
+**Enhanced features (not in original Reloader):**
+- ✅ `"annotations"` strategy - GitOps-friendly pod template annotation updates
+- ✅ CRD-based configuration for advanced scenarios
+- ✅ Enhanced status tracking and observability
 
 **What to avoid:**
 - 🐛 Don't rely on pause period annotations (broken)
