@@ -58,19 +58,32 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceHash
 		"namespace", target.Namespace,
 		"strategy", strategy)
 
+	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		return u.reloadDeployment(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadDeployment(ctx, target.Name, target.Namespace, strategy, resourceHash)
 
 	case util.KindStatefulSet:
-		return u.reloadStatefulSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
 
 	case util.KindDaemonSet:
-		return u.reloadDaemonSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
 	}
+
+	// If reload succeeded and this is an annotation-based workload, set last reload timestamp
+	if err == nil && target.Config == nil && target.PausePeriod != "" {
+		if annotErr := u.setLastReloadAnnotation(ctx, target); annotErr != nil {
+			logger.Error(annotErr, "Failed to set last reload annotation",
+				"kind", target.Kind,
+				"name", target.Name)
+			// Don't fail the reload if annotation update fails
+		}
+	}
+
+	return err
 }
 
 // reloadDeployment triggers a rolling update of a Deployment
@@ -258,28 +271,96 @@ func (u *Updater) IsPaused(ctx context.Context, target Target) (bool, error) {
 		return false, fmt.Errorf("invalid pause period: %w", err)
 	}
 
-	// If no ReloaderConfig, we can't track pause state
-	if target.Config == nil {
+	// For ReloaderConfig-based targets, check status
+	if target.Config != nil {
+		for _, status := range target.Config.Status.TargetStatus {
+			if status.Kind == target.Kind &&
+				status.Name == target.Name &&
+				status.Namespace == target.Namespace {
+
+				if status.PausedUntil != nil && status.PausedUntil.After(time.Now()) {
+					return true, nil
+				}
+			}
+		}
 		return false, nil
 	}
 
-	// Check target status for pause expiration
-	for _, status := range target.Config.Status.TargetStatus {
-		if status.Kind == target.Kind &&
-			status.Name == target.Name &&
-			status.Namespace == target.Namespace {
-
-			if status.PausedUntil != nil && status.PausedUntil.After(time.Now()) {
-				return true, nil
-			}
-		}
+	// For annotation-based targets, check the last reload annotation on the workload
+	obj, err := u.getWorkload(ctx, target)
+	if err != nil {
+		return false, err
 	}
 
-	// Not paused, but we should set pause for future reloads
-	// This will be done when updating the status after successful reload
-	_ = duration // Will use this when updating status
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		return false, nil
+	}
 
-	return false, nil
+	lastReloadStr, exists := annotations[util.AnnotationLastReload]
+	if !exists {
+		return false, nil
+	}
+
+	// Parse the last reload timestamp
+	lastReload, err := time.Parse(time.RFC3339, lastReloadStr)
+	if err != nil {
+		// Invalid timestamp, treat as not paused
+		return false, nil
+	}
+
+	// Check if still within pause period
+	pausedUntil := lastReload.Add(duration)
+	return pausedUntil.After(time.Now()), nil
+}
+
+// getWorkload retrieves the workload object based on target kind
+func (u *Updater) getWorkload(ctx context.Context, target Target) (client.Object, error) {
+	key := client.ObjectKey{
+		Name:      target.Name,
+		Namespace: target.Namespace,
+	}
+
+	switch target.Kind {
+	case util.KindDeployment:
+		obj := &appsv1.Deployment{}
+		if err := u.Client.Get(ctx, key, obj); err != nil {
+			return nil, err
+		}
+		return obj, nil
+	case util.KindStatefulSet:
+		obj := &appsv1.StatefulSet{}
+		if err := u.Client.Get(ctx, key, obj); err != nil {
+			return nil, err
+		}
+		return obj, nil
+	case util.KindDaemonSet:
+		obj := &appsv1.DaemonSet{}
+		if err := u.Client.Get(ctx, key, obj); err != nil {
+			return nil, err
+		}
+		return obj, nil
+	default:
+		return nil, fmt.Errorf("unsupported workload kind: %s", target.Kind)
+	}
+}
+
+// setLastReloadAnnotation sets the last reload timestamp annotation on the workload
+func (u *Updater) setLastReloadAnnotation(ctx context.Context, target Target) error {
+	obj, err := u.getWorkload(ctx, target)
+	if err != nil {
+		return err
+	}
+
+	annotations := obj.GetAnnotations()
+	if annotations == nil {
+		annotations = make(map[string]string)
+	}
+
+	annotations[util.AnnotationLastReload] = time.Now().Format(time.RFC3339)
+	obj.SetAnnotations(annotations)
+
+	return u.Client.Update(ctx, obj)
 }
 
 // restartWorkloadPods deletes all pods for a workload, triggering recreation with updated configs
