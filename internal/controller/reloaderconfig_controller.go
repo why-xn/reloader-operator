@@ -519,9 +519,23 @@ func (r *ReloaderConfigReconciler) discoverTargets(
 		return nil, nil, err
 	}
 
+	// Get the resource to access its annotations for targeted reload (search + match)
+	var resourceAnnotations map[string]string
+	if resourceKind == util.KindSecret {
+		secret := &corev1.Secret{}
+		if err := r.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: resourceNamespace}, secret); err == nil {
+			resourceAnnotations = secret.Annotations
+		}
+	} else if resourceKind == util.KindConfigMap {
+		cm := &corev1.ConfigMap{}
+		if err := r.Get(ctx, client.ObjectKey{Name: resourceName, Namespace: resourceNamespace}, cm); err == nil {
+			resourceAnnotations = cm.Annotations
+		}
+	}
+
 	// Find workloads with annotation-based config
 	annotatedWorkloads, err := r.WorkloadFinder.FindWorkloadsWithAnnotations(
-		ctx, resourceKind, resourceName, resourceNamespace)
+		ctx, resourceKind, resourceName, resourceNamespace, resourceAnnotations)
 	if err != nil {
 		logger.Error(err, "Failed to find annotated workloads")
 		return nil, nil, err

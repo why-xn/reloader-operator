@@ -719,4 +719,216 @@ spec:
 			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
 		})
 	})
+
+	Context("Targeted Reload (Search + Match)", func() {
+		It("should reload when workload has search and ConfigMap has match", func() {
+			configMapName := "search-match-config"
+			deploymentName := "search-enabled-app"
+
+			By("creating a ConfigMap with match annotation")
+			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "initial-value",
+			})
+			// Add match annotation manually
+			configMapYAML = AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
+			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
+
+			By("creating a Deployment with search annotation that references the ConfigMap")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:      2,
+				ConfigMapName: configMapName,
+				Annotations: map[string]string{
+					"reloader.stakater.com/search": "true",
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("updating the ConfigMap")
+			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "updated-value",
+			})
+			updatedConfigMapYAML = AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
+			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
+
+			By("waiting for pods to be recreated")
+			Eventually(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				return len(currentUIDs) == 2 && !utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
+
+			By("verifying new pods were created")
+			newUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newUIDs).To(HaveLen(2))
+			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after targeted reload")
+		})
+
+		It("should NOT reload when workload has search but ConfigMap lacks match", func() {
+			configMapName := "no-match-config"
+			deploymentName := "search-no-match-app"
+
+			By("creating a ConfigMap WITHOUT match annotation")
+			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "initial-value",
+			})
+			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
+
+			By("creating a Deployment with search annotation")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:      2,
+				ConfigMapName: configMapName,
+				Annotations: map[string]string{
+					"reloader.stakater.com/search": "true",
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("updating the ConfigMap")
+			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "updated-value",
+			})
+			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
+
+			By("waiting to ensure pods are NOT recreated")
+			Consistently(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				return utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 30*time.Second, 5*time.Second).Should(BeTrue())
+
+			By("verifying pods remain unchanged")
+			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when match annotation is missing")
+		})
+
+		It("should reload with auto annotation even without match (auto takes precedence)", func() {
+			configMapName := "auto-precedence-config"
+			deploymentName := "auto-over-search-app"
+
+			By("creating a ConfigMap WITHOUT match annotation")
+			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "initial-value",
+			})
+			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
+
+			By("creating a Deployment with both auto and search annotations")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:      2,
+				ConfigMapName: configMapName,
+				Annotations: map[string]string{
+					"reloader.stakater.com/auto":   "true",
+					"reloader.stakater.com/search": "true",
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("updating the ConfigMap")
+			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "updated-value",
+			})
+			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
+
+			By("waiting for pods to be recreated (auto takes precedence)")
+			Eventually(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				return len(currentUIDs) == 2 && !utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 2*time.Minute, 5*time.Second).Should(BeTrue())
+
+			By("verifying new pods were created because auto annotation takes precedence")
+			newUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(newUIDs).To(HaveLen(2))
+			Expect(newUIDs).NotTo(Equal(initialUIDs), "Auto annotation should trigger reload regardless of match")
+		})
+
+		It("should NOT reload when ConfigMap has match but workload lacks search", func() {
+			configMapName := "match-no-search-config"
+			deploymentName := "no-search-app"
+
+			By("creating a ConfigMap with match annotation")
+			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "initial-value",
+			})
+			configMapYAML = AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
+			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
+
+			By("creating a Deployment WITHOUT search annotation")
+			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+				Replicas:      2,
+				ConfigMapName: configMapName,
+				// No annotations
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("updating the ConfigMap")
+			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+				"config": "updated-value",
+			})
+			updatedConfigMapYAML = AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
+			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
+
+			By("waiting to ensure pods are NOT recreated")
+			Consistently(func() bool {
+				currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+				if err != nil {
+					return false
+				}
+				return utils.StringSlicesEqual(currentUIDs, initialUIDs)
+			}, 30*time.Second, 5*time.Second).Should(BeTrue())
+
+			By("verifying pods remain unchanged")
+			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentUIDs).To(Equal(initialUIDs), "Workload without search annotation should not reload")
+		})
+	})
 })

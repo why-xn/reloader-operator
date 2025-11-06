@@ -281,7 +281,7 @@ These annotations provide an opt-in mechanism where workloads only reload for re
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"` or `"false"`
-**Status:** ❌ **Missing**
+**Status:** ✅ **Implemented**
 
 **What it does:**
 - Enables "search mode" for the workload
@@ -337,7 +337,7 @@ data:
 
 **Applied to:** ConfigMap, Secret
 **Value:** `"true"` or `"false"`
-**Status:** ❌ **Missing**
+**Status:** ✅ **Implemented**
 
 **What it does:**
 - Tags a ConfigMap or Secret as eligible for reload
@@ -349,7 +349,7 @@ You have 10 ConfigMaps referenced in your deployment, but only 2 should trigger 
 
 **Code Location:**
 - Constant: `internal/pkg/util/helpers.go:30` - `AnnotationMatch`
-- **Not implemented in finder.go**
+- Implementation: `internal/pkg/workload/finder.go:378-390` - `shouldReloadFromAnnotations()`
 
 ---
 
@@ -755,8 +755,8 @@ data:
 | `configmap.reloader.stakater.com/auto` | Workload | ⚠️ Partial | **HIGH** |
 | `secret.reloader.stakater.com/reload` | Workload | ⚠️ Partial (no regex) | **MEDIUM** |
 | `configmap.reloader.stakater.com/reload` | Workload | ⚠️ Partial (no regex) | **MEDIUM** |
-| `reloader.stakater.com/search` | Workload | ❌ Missing | **MEDIUM** |
-| `reloader.stakater.com/match` | ConfigMap/Secret | ❌ Missing | **MEDIUM** |
+| `reloader.stakater.com/search` | Workload | ✅ Implemented | **MEDIUM** |
+| `reloader.stakater.com/match` | ConfigMap/Secret | ✅ Implemented | **MEDIUM** |
 | `reloader.stakater.com/ignore` | ConfigMap/Secret | ⚠️ Partial | **HIGH** |
 | `configmaps.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
 | `secrets.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
@@ -775,15 +775,15 @@ data:
 ## 9. Implementation Statistics
 
 ### By Status
-- ✅ **Fully Implemented:** 2 annotations (10%)
+- ✅ **Fully Implemented:** 4 annotations (21%)
 - ⚠️ **Partially Implemented:** 8 annotations (42%)
 - 🐛 **Broken:** 3 annotations (16%)
-- ❌ **Missing:** 6 annotations (32%)
+- ❌ **Missing:** 4 annotations (21%)
 
 ### By Priority
 - **CRITICAL:** 3 annotations (pause period bug)
 - **HIGH:** 4 annotations (auto annotations, ignore)
-- **MEDIUM:** 5 annotations (named reload, search/match, exclusions)
+- **MEDIUM:** 5 annotations (named reload implemented, search/match implemented, exclusions missing)
 - **LOW:** 7 annotations (tracking, metadata, restart strategy)
 
 ---
@@ -869,10 +869,10 @@ reloader.stakater.com/rollout-strategy: "annotations"
 - ✅ `"annotations"` strategy - GitOps-friendly pod template annotation updates
 - ✅ CRD-based configuration for advanced scenarios
 - ✅ Enhanced status tracking and observability
+- ✅ Targeted reload using search/match annotations
 
 **What to avoid:**
 - 🐛 Don't rely on pause period annotations (broken)
-- ❌ Don't use search/match annotations (not implemented)
 - ❌ Don't use exclusion annotations (not implemented)
 
 ---

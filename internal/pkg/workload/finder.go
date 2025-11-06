@@ -222,6 +222,7 @@ func podTemplateReferencesResource(template *corev1.PodTemplateSpec, resourceKin
 func (f *Finder) FindWorkloadsWithAnnotations(
 	ctx context.Context,
 	resourceKind, resourceName, resourceNamespace string,
+	resourceAnnotations map[string]string,
 ) ([]Target, error) {
 	logger := log.FromContext(ctx)
 	targets := []Target{}
@@ -233,7 +234,7 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 	}
 
 	for _, deploy := range deployments.Items {
-		if shouldReloadFromAnnotations(&deploy, resourceKind, resourceName) {
+		if shouldReloadFromAnnotations(&deploy, resourceKind, resourceName, resourceAnnotations) {
 			strategy := util.GetDefaultStrategy(
 				deploy.Annotations[util.AnnotationReloadStrategy],
 				util.ReloadStrategyEnvVars,
@@ -262,7 +263,7 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 	}
 
 	for _, sts := range statefulSets.Items {
-		if shouldReloadFromAnnotations(&sts, resourceKind, resourceName) {
+		if shouldReloadFromAnnotations(&sts, resourceKind, resourceName, resourceAnnotations) {
 			strategy := util.GetDefaultStrategy(
 				sts.Annotations[util.AnnotationReloadStrategy],
 				util.ReloadStrategyEnvVars,
@@ -291,7 +292,7 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 	}
 
 	for _, ds := range daemonSets.Items {
-		if shouldReloadFromAnnotations(&ds, resourceKind, resourceName) {
+		if shouldReloadFromAnnotations(&ds, resourceKind, resourceName, resourceAnnotations) {
 			strategy := util.GetDefaultStrategy(
 				ds.Annotations[util.AnnotationReloadStrategy],
 				util.ReloadStrategyEnvVars,
@@ -317,7 +318,7 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 }
 
 // shouldReloadFromAnnotations checks if a workload should reload based on annotations
-func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName string) bool {
+func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName string, resourceAnnotations map[string]string) bool {
 	annotations := obj.GetAnnotations()
 	if annotations == nil {
 		return false
@@ -339,14 +340,18 @@ func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName s
 		podSpec = &v.Spec.Template.Spec
 	}
 
-	// Check auto-reload
-	if annotations[util.AnnotationAuto] == "true" {
+	// Rule 1: Check auto-reload (takes precedence over search)
+	autoValue := annotations[util.AnnotationAuto]
+	if autoValue == "true" {
 		if podSpec != nil && workloadReferencesResource(podSpec, resourceKind, resourceName) {
 			return true
 		}
+	} else if autoValue == "false" {
+		// Explicitly disabled - no reload regardless of other annotations
+		return false
 	}
 
-	// Check type-specific auto
+	// Rule 2: Check type-specific auto
 	if resourceKind == util.KindSecret && annotations[util.AnnotationSecretAuto] == "true" {
 		if podSpec != nil && workloadReferencesResource(podSpec, resourceKind, resourceName) {
 			return true
@@ -358,7 +363,7 @@ func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName s
 		}
 	}
 
-	// Check specific reload lists
+	// Rule 3: Check specific reload lists (named reload)
 	var reloadList string
 	if resourceKind == util.KindSecret {
 		reloadList = annotations[util.AnnotationSecretReload]
@@ -369,6 +374,20 @@ func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName s
 	if reloadList != "" {
 		names := util.ParseCommaSeparatedList(reloadList)
 		return util.ContainsString(names, resourceName)
+	}
+
+	// Rule 4: Check targeted reload (search + match)
+	// Workload must have search: "true" AND resource must have match: "true" AND resource must be referenced
+	searchValue := annotations[util.AnnotationSearch]
+	if searchValue == "true" {
+		// Workload is in search mode
+		// Check if resource has match annotation
+		if resourceAnnotations != nil && resourceAnnotations[util.AnnotationMatch] == "true" {
+			// Check if resource is referenced in pod spec
+			if podSpec != nil && workloadReferencesResource(podSpec, resourceKind, resourceName) {
+				return true
+			}
+		}
 	}
 
 	return false

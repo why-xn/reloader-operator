@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 
 	"github.com/stakater/Reloader/test/utils"
@@ -460,4 +461,42 @@ spec:
 	}
 
 	return yaml
+}
+
+// AddAnnotation adds an annotation to a Kubernetes resource YAML
+func AddAnnotation(yaml, key, value string) string {
+	// Find the metadata section
+	metadataIndex := strings.Index(yaml, "metadata:")
+	if metadataIndex == -1 {
+		return yaml
+	}
+
+	// Find the end of the metadata name line
+	nameIndex := strings.Index(yaml[metadataIndex:], "  name:")
+	if nameIndex == -1 {
+		return yaml
+	}
+
+	// Find the end of that line
+	nameLineEnd := strings.Index(yaml[metadataIndex+nameIndex:], "\n")
+	if nameLineEnd == -1 {
+		return yaml
+	}
+
+	insertPos := metadataIndex + nameIndex + nameLineEnd + 1
+
+	// Check if annotations already exist
+	annotationsIndex := strings.Index(yaml[metadataIndex:], "  annotations:")
+	if annotationsIndex != -1 && annotationsIndex < nameIndex+nameLineEnd+100 {
+		// Annotations section exists, find where to insert
+		annotationsPos := metadataIndex + annotationsIndex
+		annotationsLineEnd := strings.Index(yaml[annotationsPos:], "\n")
+		insertPos = annotationsPos + annotationsLineEnd + 1
+		annotation := fmt.Sprintf("    %s: \"%s\"\n", key, value)
+		return yaml[:insertPos] + annotation + yaml[insertPos:]
+	}
+
+	// Annotations section doesn't exist, create it
+	annotations := fmt.Sprintf("  annotations:\n    %s: \"%s\"\n", key, value)
+	return yaml[:insertPos] + annotations + yaml[insertPos:]
 }
