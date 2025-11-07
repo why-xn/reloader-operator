@@ -426,18 +426,20 @@ metadata:
 
 // ReloaderConfigSpec is a simplified spec for generating ReloaderConfig
 type ReloaderConfigSpec struct {
-	WatchedSecrets    []string
-	WatchedConfigMaps []string
-	Targets           []Target
-	ReloadStrategy    string
-	AutoReloadAll     bool
+	WatchedSecrets         []string
+	WatchedConfigMaps      []string
+	EnableTargetedReload   bool
+	Targets                []Target
+	ReloadStrategy         string
+	AutoReloadAll          bool
 }
 
 // Target represents a workload target
 type Target struct {
-	Kind        string
-	Name        string
-	PausePeriod string
+	Kind             string
+	Name             string
+	PausePeriod      string
+	RequireReference bool
 }
 
 // GenerateReloaderConfig creates a ReloaderConfig YAML string
@@ -450,7 +452,7 @@ metadata:
 spec:
 `, name, namespace)
 
-	if len(spec.WatchedSecrets) > 0 || len(spec.WatchedConfigMaps) > 0 {
+	if len(spec.WatchedSecrets) > 0 || len(spec.WatchedConfigMaps) > 0 || spec.EnableTargetedReload {
 		yaml += "  watchedResources:\n"
 		if len(spec.WatchedSecrets) > 0 {
 			yaml += "    secrets:\n"
@@ -464,6 +466,9 @@ spec:
 				yaml += fmt.Sprintf("    - %s\n", cm)
 			}
 		}
+		if spec.EnableTargetedReload {
+			yaml += "    enableTargetedReload: true\n"
+		}
 	}
 
 	if len(spec.Targets) > 0 {
@@ -473,6 +478,9 @@ spec:
 			yaml += fmt.Sprintf("    name: %s\n", target.Name)
 			if target.PausePeriod != "" {
 				yaml += fmt.Sprintf("    pausePeriod: %s\n", target.PausePeriod)
+			}
+			if target.RequireReference {
+				yaml += "    requireReference: true\n"
 			}
 		}
 	}

@@ -277,6 +277,14 @@ spec:
                       - annotations
                       - restart
                       type: string
+                    requireReference:
+                      description: |-
+                        RequireReference enables targeted reload for this workload
+                        When true, this target will only be reloaded if:
+                        1. The ReloaderConfig has EnableTargetedReload=true (resources in "match" mode)
+                        2. The workload's pod spec actually references the changed resource
+                        This allows fine-grained control over which targets reload for which resources
+                      type: boolean
                   required:
                   - kind
                   - name
@@ -291,6 +299,15 @@ spec:
                     items:
                       type: string
                     type: array
+                  enableTargetedReload:
+                    description: |-
+                      EnableTargetedReload enables targeted reload mode for watched resources
+                      When true, resources are in "match" mode - they will only trigger reloads
+                      for targets that have EnableSearch=true AND actually reference these resources
+                      in their pod specs (env vars, volumes, etc.)
+                      This prevents unnecessary reloads when multiple targets share a ReloaderConfig
+                      but only some actually use the changed resource
+                    type: boolean
                   namespaceSelector:
                     description: NamespaceSelector allows watching resources across
                       namespaces

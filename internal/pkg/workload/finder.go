@@ -30,12 +30,13 @@ import (
 
 // Target represents a workload that needs to be reloaded
 type Target struct {
-	Kind           string
-	Name           string
-	Namespace      string
-	ReloadStrategy string
-	PausePeriod    string
-	Config         *reloaderv1alpha1.ReloaderConfig // Reference to the ReloaderConfig that triggered this
+	Kind             string
+	Name             string
+	Namespace        string
+	ReloadStrategy   string
+	PausePeriod      string
+	RequireReference bool                             // Whether this target requires pod spec reference for targeted reload
+	Config           *reloaderv1alpha1.ReloaderConfig // Reference to the ReloaderConfig that triggered this
 }
 
 // Finder discovers workloads that need to be reloaded

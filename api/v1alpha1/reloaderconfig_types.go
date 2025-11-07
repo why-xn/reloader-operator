@@ -80,6 +80,15 @@ type WatchedResources struct {
 	// +optional
 	ConfigMaps []string `json:"configMaps,omitempty"`
 
+	// EnableTargetedReload enables targeted reload mode for watched resources
+	// When true, resources are in "match" mode - they will only trigger reloads
+	// for targets that have EnableSearch=true AND actually reference these resources
+	// in their pod specs (env vars, volumes, etc.)
+	// This prevents unnecessary reloads when multiple targets share a ReloaderConfig
+	// but only some actually use the changed resource
+	// +optional
+	EnableTargetedReload bool `json:"enableTargetedReload,omitempty"`
+
 	// NamespaceSelector allows watching resources across namespaces
 	// +optional
 	NamespaceSelector *metav1.LabelSelector `json:"namespaceSelector,omitempty"`
@@ -114,6 +123,14 @@ type TargetWorkload struct {
 	// +kubebuilder:validation:Pattern=`^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$`
 	// +optional
 	PausePeriod string `json:"pausePeriod,omitempty"`
+
+	// RequireReference enables targeted reload for this workload
+	// When true, this target will only be reloaded if:
+	// 1. The ReloaderConfig has EnableTargetedReload=true (resources in "match" mode)
+	// 2. The workload's pod spec actually references the changed resource
+	// This allows fine-grained control over which targets reload for which resources
+	// +optional
+	RequireReference bool `json:"requireReference,omitempty"`
 }
 
 // ResourceReference identifies a specific Kubernetes resource
