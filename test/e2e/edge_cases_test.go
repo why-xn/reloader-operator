@@ -105,6 +105,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 				}
 				return status.ReloadCount > 0
 			}, 1*time.Minute, 2*time.Second).Should(BeTrue())
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should handle missing watched resource gracefully", func() {
@@ -150,6 +157,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 				}
 				return len(status.WatchedResourceHashes) > 0
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should handle watched resource deletion", func() {
@@ -211,6 +225,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 				}
 				return len(status.WatchedResourceHashes) > 0
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should respect pause period between reloads", func() {
@@ -297,6 +318,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(secondStatus.TargetStatus)).To(BeNumerically(">", 0))
 		Expect(secondStatus.TargetStatus[0].ReloadCount).To(Equal(firstReloadCount), "Reload count should not increase during pause period")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should handle multiple ReloaderConfigs watching the same resource", func() {
@@ -387,6 +415,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			newUIDs2, err := utils.GetPodUIDs(testNS, "deployment", deployment2Name)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs2).NotTo(Equal(initialUIDs2))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deployment1Name, deployment2Name},
+				"secret":         {secretName},
+				"reloaderconfig": {config1Name, config2Name},
+			})
 		})
 	})
 })

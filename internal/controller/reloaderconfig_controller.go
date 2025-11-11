@@ -686,6 +686,20 @@ func (r *ReloaderConfigReconciler) discoverTargets(
 		return nil, nil, err
 	}
 
+	// Filter out ReloaderConfigs that have this resource in their ignoreResources list
+	filteredConfigs := []*reloaderv1alpha1.ReloaderConfig{}
+	for _, config := range reloaderConfigs {
+		if r.shouldIgnoreResource(config, resourceKind, resourceName, resourceNamespace) {
+			logger.Info("Ignoring resource due to ignoreResources configuration",
+				"config", config.Name,
+				"resource", resourceKind+"/"+resourceName,
+				"namespace", resourceNamespace)
+			continue
+		}
+		filteredConfigs = append(filteredConfigs, config)
+	}
+	reloaderConfigs = filteredConfigs
+
 	// Get the resource to access its annotations for targeted reload (search + match)
 	var resourceAnnotations map[string]string
 	if resourceKind == util.KindSecret {
@@ -712,6 +726,38 @@ func (r *ReloaderConfigReconciler) discoverTargets(
 	allTargets := r.mergeTargets(reloaderConfigs, annotatedWorkloads)
 
 	return allTargets, reloaderConfigs, nil
+}
+
+// shouldIgnoreResource checks if a resource should be ignored based on ignoreResources configuration
+func (r *ReloaderConfigReconciler) shouldIgnoreResource(
+	config *reloaderv1alpha1.ReloaderConfig,
+	resourceKind string,
+	resourceName string,
+	resourceNamespace string,
+) bool {
+	// If no ignoreResources specified, don't ignore anything
+	if len(config.Spec.IgnoreResources) == 0 {
+		return false
+	}
+
+	// Check if this resource is in the ignore list
+	for _, ignoredResource := range config.Spec.IgnoreResources {
+		// Match by kind and name
+		if ignoredResource.Kind != resourceKind || ignoredResource.Name != resourceName {
+			continue
+		}
+
+		// If namespace is specified in the ignore rule, it must match
+		// If namespace is not specified in the ignore rule, match any namespace
+		if ignoredResource.Namespace != "" && ignoredResource.Namespace != resourceNamespace {
+			continue
+		}
+
+		// Found a match - this resource should be ignored
+		return true
+	}
+
+	return false
 }
 
 // filterTargetsForTargetedReload filters targets based on targeted reload settings

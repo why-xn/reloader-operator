@@ -108,6 +108,13 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(newUIDs)).To(Equal(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 	})
 
@@ -178,6 +185,13 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(newUIDs)).To(Equal(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"configmap":      {configMapName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload Deployment when ConfigMap mounted as volume changes with annotation", func() {
@@ -227,6 +241,12 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(newUIDs)).To(Equal(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 	})
 
@@ -317,6 +337,14 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(status.ReloadCount).To(BeNumerically(">=", 2))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"configmap":      {configMapName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 	})
 })

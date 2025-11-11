@@ -88,6 +88,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+			})
 		})
 
 		It("should reload Deployment with configmap.reloader.stakater.com/reload annotation", func() {
@@ -136,6 +142,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should auto-reload when workload has reloader.stakater.com/auto annotation", func() {
@@ -184,6 +196,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after auto-reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+			})
 		})
 
 		It("should NOT reload when reloader.stakater.com/ignore annotation is true", func() {
@@ -238,6 +256,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same for ignored workload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+			})
 		})
 
 		It("should support multiple secrets in comma-separated annotation", func() {
@@ -293,6 +317,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secret1Name, secret2Name},
+			})
 		})
 
 		It("should auto-reload only Secrets with secret.reloader.stakater.com/auto annotation", func() {
@@ -363,6 +393,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after Secret update")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should auto-reload only ConfigMaps with configmap.reloader.stakater.com/auto annotation", func() {
@@ -433,6 +470,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after ConfigMap update")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should reload only when named Secret in list changes", func() {
@@ -510,6 +554,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after watched Secret update")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {namedSecretName, otherSecretName},
+			})
 		})
 
 		It("should reload when named ConfigMap in list changes", func() {
@@ -587,6 +637,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after watched ConfigMap update")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {namedConfigMapName, otherConfigMapName},
+			})
 		})
 
 		It("should reload when named Secret changes even if NOT referenced in pod spec", func() {
@@ -654,6 +710,12 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different even for non-referenced Secret")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {externalSecretName},
+			})
 		})
 
 		It("should reload Deployment using restart strategy without modifying template", func() {
@@ -717,6 +779,12 @@ spec:
 			currentGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+			})
 		})
 	})
 
@@ -774,6 +842,12 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after targeted reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should NOT reload when workload has search but ConfigMap lacks match", func() {
@@ -825,6 +899,12 @@ spec:
 			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when match annotation is missing")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should reload with auto annotation even without match (auto takes precedence)", func() {
@@ -878,6 +958,12 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Auto annotation should trigger reload regardless of match")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 
 		It("should NOT reload when ConfigMap has match but workload lacks search", func() {
@@ -929,6 +1015,12 @@ spec:
 			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentUIDs).To(Equal(initialUIDs), "Workload without search annotation should not reload")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
 		})
 	})
 })

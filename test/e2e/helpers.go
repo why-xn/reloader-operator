@@ -26,6 +26,7 @@ import (
 	"strings"
 	"time"
 
+	. "github.com/onsi/ginkgo/v2"
 	"github.com/stakater/Reloader/test/utils"
 )
 
@@ -47,6 +48,26 @@ func CleanupTestNamespace() {
 	}
 	cmd := exec.Command("kubectl", "delete", "namespace", testNamespace, "--wait=false")
 	_, _ = utils.Run(cmd)
+}
+
+// CleanupResourcesOnSuccess deletes specific resources only if the current test passed
+// This allows keeping resources for troubleshooting when tests fail
+// resourceTypes: map of resource type to list of resource names, e.g., {"deployment": {"app1", "app2"}, "secret": {"secret1"}}
+func CleanupResourcesOnSuccess(namespace string, resourceTypes map[string][]string) {
+	// Check if current spec failed
+	report := CurrentSpecReport()
+	if report.Failed() {
+		_, _ = fmt.Fprintf(GinkgoWriter, "⚠️  Test failed - keeping resources in namespace '%s' for troubleshooting\n", namespace)
+		return
+	}
+
+	// Test passed, clean up resources
+	for resourceType, resourceNames := range resourceTypes {
+		for _, resourceName := range resourceNames {
+			cmd := exec.Command("kubectl", "delete", resourceType, resourceName, "-n", namespace, "--ignore-not-found=true", "--wait=false")
+			_, _ = utils.Run(cmd)
+		}
+	}
 }
 
 // GenerateUniqueResourceName creates unique names for test resources
@@ -260,6 +281,8 @@ type StatefulSetOpts struct {
 	Image         string
 	Labels        map[string]string
 	Annotations   map[string]string
+	SecretName    string
+	SecretKey     string
 	ConfigMapName string
 	ConfigMapKey  string
 	EnvVarName    string
@@ -287,7 +310,7 @@ metadata:
 	if len(opts.Annotations) > 0 {
 		yaml += "  annotations:\n"
 		for k, v := range opts.Annotations {
-			yaml += fmt.Sprintf("    %s: %s\n", k, v)
+			yaml += fmt.Sprintf("    %s: \"%s\"\n", k, v)
 		}
 	}
 
@@ -321,22 +344,42 @@ metadata:
             type: RuntimeDefault
 `
 
-	if opts.ConfigMapName != "" {
+	if opts.SecretName != "" || opts.ConfigMapName != "" {
 		yaml += "        env:\n"
-		envName := opts.EnvVarName
-		if envName == "" {
-			envName = "CONFIG_VALUE"
+
+		if opts.SecretName != "" {
+			envName := opts.EnvVarName
+			if envName == "" {
+				envName = "SECRET_VALUE"
+			}
+			secretKey := opts.SecretKey
+			if secretKey == "" {
+				secretKey = "password"
+			}
+			yaml += fmt.Sprintf(`        - name: %s
+          valueFrom:
+            secretKeyRef:
+              name: %s
+              key: %s
+`, envName, opts.SecretName, secretKey)
 		}
-		configMapKey := opts.ConfigMapKey
-		if configMapKey == "" {
-			configMapKey = "config"
-		}
-		yaml += fmt.Sprintf(`        - name: %s
+
+		if opts.ConfigMapName != "" {
+			envName := opts.EnvVarName
+			if envName == "" {
+				envName = "CONFIG_VALUE"
+			}
+			configMapKey := opts.ConfigMapKey
+			if configMapKey == "" {
+				configMapKey = "config"
+			}
+			yaml += fmt.Sprintf(`        - name: %s
           valueFrom:
             configMapKeyRef:
               name: %s
               key: %s
 `, envName, opts.ConfigMapName, configMapKey)
+		}
 	}
 
 	return yaml
@@ -344,12 +387,14 @@ metadata:
 
 // DaemonSetOpts contains options for generating a DaemonSet
 type DaemonSetOpts struct {
-	Image       string
-	Labels      map[string]string
-	Annotations map[string]string
-	SecretName  string
-	SecretKey   string
-	EnvVarName  string
+	Image         string
+	Labels        map[string]string
+	Annotations   map[string]string
+	SecretName    string
+	SecretKey     string
+	ConfigMapName string
+	ConfigMapKey  string
+	EnvVarName    string
 }
 
 // GenerateDaemonSet creates a DaemonSet YAML string
@@ -371,7 +416,7 @@ metadata:
 	if len(opts.Annotations) > 0 {
 		yaml += "  annotations:\n"
 		for k, v := range opts.Annotations {
-			yaml += fmt.Sprintf("    %s: %s\n", k, v)
+			yaml += fmt.Sprintf("    %s: \"%s\"\n", k, v)
 		}
 	}
 
@@ -403,22 +448,42 @@ metadata:
             type: RuntimeDefault
 `
 
-	if opts.SecretName != "" {
+	if opts.SecretName != "" || opts.ConfigMapName != "" {
 		yaml += "        env:\n"
-		envName := opts.EnvVarName
-		if envName == "" {
-			envName = "SECRET_VALUE"
-		}
-		secretKey := opts.SecretKey
-		if secretKey == "" {
-			secretKey = "password"
-		}
-		yaml += fmt.Sprintf(`        - name: %s
+
+		if opts.SecretName != "" {
+			envName := opts.EnvVarName
+			if envName == "" {
+				envName = "SECRET_VALUE"
+			}
+			secretKey := opts.SecretKey
+			if secretKey == "" {
+				secretKey = "password"
+			}
+			yaml += fmt.Sprintf(`        - name: %s
           valueFrom:
             secretKeyRef:
               name: %s
               key: %s
 `, envName, opts.SecretName, secretKey)
+		}
+
+		if opts.ConfigMapName != "" {
+			envName := opts.EnvVarName
+			if envName == "" {
+				envName = "CONFIG_VALUE"
+			}
+			configMapKey := opts.ConfigMapKey
+			if configMapKey == "" {
+				configMapKey = "config"
+			}
+			yaml += fmt.Sprintf(`        - name: %s
+          valueFrom:
+            configMapKeyRef:
+              name: %s
+              key: %s
+`, envName, opts.ConfigMapName, configMapKey)
+		}
 	}
 
 	return yaml

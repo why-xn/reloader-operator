@@ -121,7 +121,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			By("waiting for Deployment rollout to complete")
 			Eventually(func() error {
 				return utils.WaitForRolloutComplete(testNS, "deployment", deploymentName, 30*time.Second)
-			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+			}, 2*time.Minute, 10*time.Second).Should(Succeed())
 
 			By("verifying new pods were created")
 			newUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
@@ -147,6 +147,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(status.TargetStatus).To(HaveLen(1))
 			Expect(status.TargetStatus[0].Name).To(Equal(deploymentName))
 			Expect(status.TargetStatus[0].Kind).To(Equal("Deployment"))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload Deployment when ConfigMap changes using env-vars strategy", func() {
@@ -231,6 +238,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"configmap":      {configMapName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload StatefulSet when ConfigMap changes using annotations strategy", func() {
@@ -321,6 +335,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "statefulset", statefulSetName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"statefulset":    {statefulSetName},
+				"configmap":      {configMapName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload multiple workloads when shared Secret changes", func() {
@@ -421,6 +442,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(status.TargetStatus).To(HaveLen(2))
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deployment1Name, deployment2Name},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload Deployment using restart strategy without modifying template", func() {
@@ -519,6 +547,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"), "RELOADER_TRIGGERED_AT should not be added with restart strategy")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {deploymentName},
+				"secret":         {secretName},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 	})
 })

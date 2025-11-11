@@ -52,7 +52,7 @@ func GetPodUIDs(namespace, workloadType, workloadName string) ([]string, error) 
 	}
 	labelSelector := strings.Join(selectors, ",")
 
-	// Get pod UIDs (only Running pods, which excludes terminating ones)
+	// Get pod UIDs (only Running pods, which typically excludes terminating ones)
 	cmd = exec.Command("kubectl", "get", "pods",
 		"-n", namespace,
 		"-l", labelSelector,

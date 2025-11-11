@@ -54,20 +54,20 @@
 ✅ Named reload (`secret.reload`, `configmap.reload`)
 ✅ Targeted reload (`search + match`)
 ✅ Reload strategy (`rollout-strategy`)
-✅ Pause period (`deployment/statefulset/daemonset.pause-period`) - **Just fixed!**
-❌ Ignore (`ignore: "true"`) - **Partially implemented**
+✅ Pause period (`deployment/statefulset/daemonset.pause-period`)
+✅ Ignore workload (`ignore: "true"`)
 
-#### CRD-Based (96% working):
+#### CRD-Based (97% working):
 ✅ Watched resources (secrets, configMaps)
 ✅ Auto reload all (`autoReloadAll`)
 ✅ Reload strategy (global and per-target)
 ✅ Pause period (`targets[].pausePeriod`)
 ✅ Targeted reload (`enableTargetedReload` + `requireReference`)
+✅ Ignore resources (`ignoreResources`)
 ✅ Alert integrations
 ✅ Status tracking
 ❌ ReloadOnCreate - **Not implemented**
 ❌ ReloadOnDelete - **Not implemented**
-❌ IgnoreResources - **Not implemented**
 ❌ Namespace selector - **Not implemented**
 ❌ Resource selector - **Not implemented**
 ❌ Match labels - **Not implemented**
@@ -76,24 +76,17 @@
 
 ## Missing Implementations
 
-### High Priority (Should Implement in CRD):
-
-1. **❌ Ignore feature**
-   - Annotation: `reloader.stakater.com/ignore: "true"` (partially working)
-   - CRD equivalent: `spec.ignoreResources` field exists but not implemented
-   - **Action needed:** Implement both properly
-
 ### Medium Priority:
 
-2. **❌ ReloadOnCreate**
+1. **❌ ReloadOnCreate**
    - CRD field exists: `spec.reloadOnCreate`
    - **Action needed:** Implement logic
 
-3. **❌ ReloadOnDelete**
+2. **❌ ReloadOnDelete**
    - CRD field exists: `spec.reloadOnDelete`
    - **Action needed:** Implement logic
 
-4. **❌ Cross-namespace watching**
+3. **❌ Cross-namespace watching**
    - CRD field exists: `spec.watchedResources.namespaceSelector`
    - **Action needed:** Implement logic
 
@@ -107,10 +100,6 @@
    - These make sense and are already in the CRD spec
    - Just need implementation
 
-2. **IgnoreResources**
-   - Already in CRD spec
-   - Should work like annotation `ignore: "true"`
-
 ### What's in CRD but Not Annotations - Keep CRD-only:
 
 These features are too complex for annotations:
@@ -123,13 +112,14 @@ These features are too complex for annotations:
 
 ## Conclusion
 
-**Feature Parity:** ~75%
-**Core features:** ✅ Both approaches support basic reload functionality including targeted reload
-**Advanced features:** CRD has more (alerts, status, multi-target)
+**Feature Parity:** ~80%
+**Core features:** ✅ Both approaches support basic reload functionality including targeted reload and ignore
+**Advanced features:** CRD has more (alerts, status, multi-target, resource-level ignore)
 **Simplicity:** Annotations are simpler for basic use cases
 
 **Recent improvements:**
 - ✅ Pause period now works for both annotation and CRD-based configs
 - ✅ Targeted reload (search+match) now available in CRD via `enableTargetedReload` + `requireReference`
+- ✅ Ignore feature now fully implemented for both annotations (workload-level) and CRD (resource-level)
 
-**Biggest remaining gap:** CRD needs `reloadOnCreate`, `reloadOnDelete`, and `ignoreResources` implemented
+**Biggest remaining gap:** CRD needs `reloadOnCreate` and `reloadOnDelete` implemented

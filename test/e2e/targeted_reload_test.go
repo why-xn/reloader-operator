@@ -223,6 +223,13 @@ spec:
 			currentGenA, err := utils.GetWorkloadGeneration(testNS, "deployment", appWithSecretA)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentGenA).To(Equal(initialGenA), "app-with-secret-a should not have been reloaded")
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {appWithSecretA, appWithSecretB, appWithBothSecrets},
+				"secret":         {secretA, secretB},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 
 		It("should reload all workloads when enableSearch is false", func() {
@@ -322,6 +329,13 @@ spec:
 			Eventually(func() error {
 				return utils.WaitForGenerationChange(testNS, "deployment", appWithSecretB, initialGenB, 10*time.Second)
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
+
+			// Cleanup resources on success
+			CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment":     {appWithSecretA, appWithSecretB},
+				"secret":         {secretA, secretB},
+				"reloaderconfig": {reloaderConfigName},
+			})
 		})
 	})
 })
