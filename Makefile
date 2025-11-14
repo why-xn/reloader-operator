@@ -208,6 +208,20 @@ e2e-test-namespace-selector: ## Run namespace selector E2E tests (requires e2e-s
 	@echo "========================================="
 	@echo ""
 
+.PHONY: e2e-test-reload-on-create-delete
+e2e-test-reload-on-create-delete: ## Run reload-on-create and reload-on-delete E2E tests (requires e2e-setup to be run first)
+	@echo "========================================="
+	@echo "Running ReloadOn Create/Delete E2E Tests"
+	@echo "========================================="
+	@echo "NOTE: This test temporarily patches the operator with --reload-on-create and --reload-on-delete flags"
+	@echo "      The configuration will be restored after tests complete."
+	@echo ""
+	@E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e-reload-on-create-delete/ -v -ginkgo.v -timeout 15m $(GINKGO_ARGS)
+	@echo "========================================="
+	@echo "✓ ReloadOn Create/Delete E2E Tests Complete!"
+	@echo "========================================="
+	@echo ""
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
