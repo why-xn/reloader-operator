@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"flag"
 	"os"
+	"strings"
 
 	// Import all Kubernetes client auth plugins (e.g. Azure, GCP, OIDC, etc.)
 	// to ensure that exec-entrypoint and run can make use of them.
@@ -67,6 +68,8 @@ func main() {
 	var reloadOnCreate bool
 	var reloadOnDelete bool
 	var resourceLabelSelector string
+	var namespaceSelector string
+	var namespacesToIgnore string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -91,6 +94,10 @@ func main() {
 		"Reload workloads when a watched ConfigMap or Secret is deleted")
 	flag.StringVar(&resourceLabelSelector, "resource-label-selector", "",
 		"Label selector to filter which ConfigMaps/Secrets are watched (e.g., 'app=myapp' or 'team=backend,env=prod')")
+	flag.StringVar(&namespaceSelector, "namespace-selector", "",
+		"Label selector to watch only namespaces with matching labels (e.g., 'environment=production' or 'team in (backend,frontend)')")
+	flag.StringVar(&namespacesToIgnore, "namespaces-to-ignore", "",
+		"Comma-separated list of namespace names to ignore (e.g., 'kube-system,kube-public')")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -114,6 +121,37 @@ func main() {
 	} else {
 		// If no selector is provided, select everything
 		resourceSelector = labels.Everything()
+	}
+
+	// Parse the namespace label selector
+	var namespaceFilter labels.Selector
+	if namespaceSelector != "" {
+		var err error
+		namespaceFilter, err = labels.Parse(namespaceSelector)
+		if err != nil {
+			setupLog.Error(err, "invalid namespace-selector",
+				"selector", namespaceSelector)
+			os.Exit(1)
+		}
+		setupLog.Info("Namespace label selector enabled",
+			"selector", namespaceSelector)
+	} else {
+		// If no selector is provided, select everything
+		namespaceFilter = labels.Everything()
+	}
+
+	// Parse the namespaces to ignore
+	ignoredNamespaces := make(map[string]bool)
+	if namespacesToIgnore != "" {
+		for _, ns := range strings.Split(namespacesToIgnore, ",") {
+			ns = strings.TrimSpace(ns)
+			if ns != "" {
+				ignoredNamespaces[ns] = true
+			}
+		}
+		setupLog.Info("Namespaces to ignore configured",
+			"count", len(ignoredNamespaces),
+			"namespaces", namespacesToIgnore)
 	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
@@ -217,6 +255,8 @@ func main() {
 		ReloadOnCreate:        reloadOnCreate,
 		ReloadOnDelete:        reloadOnDelete,
 		ResourceLabelSelector: resourceSelector,
+		NamespaceSelector:     namespaceFilter,
+		IgnoredNamespaces:     ignoredNamespaces,
 	}
 
 	if err := reconciler.SetupWithManager(mgr); err != nil {

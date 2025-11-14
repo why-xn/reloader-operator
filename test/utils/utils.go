@@ -170,6 +170,7 @@ func GetProjectDir() (string, error) {
 		return wd, fmt.Errorf("failed to get current working directory: %w", err)
 	}
 	// Strip test directories - check more specific paths first
+	wd = strings.ReplaceAll(wd, "/test/e2e-namespace-selector", "")
 	wd = strings.ReplaceAll(wd, "/test/e2e-label-selector", "")
 	wd = strings.ReplaceAll(wd, "/test/e2e", "")
 	return wd, nil

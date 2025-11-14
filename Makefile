@@ -194,6 +194,20 @@ e2e-test-label-selector: ## Run label selector E2E tests (requires e2e-setup to 
 	@echo "========================================="
 	@echo ""
 
+.PHONY: e2e-test-namespace-selector
+e2e-test-namespace-selector: ## Run namespace selector E2E tests (requires e2e-setup to be run first)
+	@echo "========================================="
+	@echo "Running Namespace Selector E2E Tests"
+	@echo "========================================="
+	@echo "NOTE: This test temporarily patches the operator with namespace filtering flags"
+	@echo "      The configuration will be restored after tests complete."
+	@echo ""
+	@E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e-namespace-selector/ -v -ginkgo.v -timeout 15m $(GINKGO_ARGS)
+	@echo "========================================="
+	@echo "✓ Namespace Selector E2E Tests Complete!"
+	@echo "========================================="
+	@echo ""
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run

@@ -83,6 +83,10 @@ type ReloaderConfigReconciler struct {
 	// Resource filtering
 	ResourceLabelSelector labels.Selector
 
+	// Namespace filtering
+	NamespaceSelector labels.Selector
+	IgnoredNamespaces map[string]bool
+
 	// Initialization tracking (safeguard to prevent processing events during startup)
 	controllersInitialized atomic.Bool
 }
@@ -235,6 +239,9 @@ func (r *ReloaderConfigReconciler) updateTargetStatusDirect(ctx context.Context,
 
 // RBAC permissions for Pods (required for restart strategy)
 // +kubebuilder:rbac:groups="",resources=pods,verbs=get;list;watch;delete
+
+// RBAC permissions for Namespaces (required for namespace filtering)
+// +kubebuilder:rbac:groups="",resources=namespaces,verbs=get;list;watch
 
 // RBAC permissions for Argo Rollouts (optional)
 // +kubebuilder:rbac:groups=argoproj.io,resources=rollouts,verbs=get;list;watch;update;patch
@@ -1599,6 +1606,32 @@ func (r *ReloaderConfigReconciler) workloadExists(ctx context.Context, kind, nam
 	}
 }
 
+// shouldProcessNamespace checks if a namespace should be processed based on filters
+func (r *ReloaderConfigReconciler) shouldProcessNamespace(ctx context.Context, namespace string) bool {
+	// Check if namespace is in the ignored list
+	if r.IgnoredNamespaces[namespace] {
+		return false
+	}
+
+	// If namespace selector is set, check if namespace matches
+	if r.NamespaceSelector != nil && !r.NamespaceSelector.Empty() {
+		// Fetch the namespace object to check its labels
+		ns := &corev1.Namespace{}
+		if err := r.Get(ctx, client.ObjectKey{Name: namespace}, ns); err != nil {
+			// If we can't fetch the namespace, log and skip it
+			log.FromContext(ctx).Error(err, "Failed to fetch namespace for filtering", "namespace", namespace)
+			return false
+		}
+
+		// Check if namespace labels match the selector
+		if !r.NamespaceSelector.Matches(labels.Set(ns.Labels)) {
+			return false
+		}
+	}
+
+	return true
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	// Initialize the status update queue
@@ -1644,7 +1677,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			// Only trigger on actual data changes
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc: func(e event.CreateEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.Object.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
@@ -1652,7 +1689,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					return r.ReloadOnCreate && r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.ObjectNew.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.ObjectNew.GetLabels())) {
 						return false
 					}
@@ -1660,7 +1701,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					return true
 				},
 				DeleteFunc: func(e event.DeleteEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.Object.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
@@ -1676,7 +1721,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.mapConfigMapToRequests),
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc: func(e event.CreateEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.Object.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
@@ -1684,7 +1733,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					return r.ReloadOnCreate && r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.ObjectNew.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.ObjectNew.GetLabels())) {
 						return false
 					}
@@ -1692,7 +1745,11 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					return true
 				},
 				DeleteFunc: func(e event.DeleteEvent) bool {
-					// Check label selector first
+					// Check namespace filtering first
+					if !r.shouldProcessNamespace(context.Background(), e.Object.GetNamespace()) {
+						return false
+					}
+					// Check label selector
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
