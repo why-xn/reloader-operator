@@ -86,6 +86,60 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceHash
 	return err
 }
 
+// TriggerDeleteReload handles workload reload when a Secret/ConfigMap is deleted
+//
+// Business Logic:
+// When a Secret/ConfigMap is deleted, we use the delete strategy:
+// - env-vars strategy: REMOVE the RELOADER_TRIGGERED_AT environment variable
+// - annotations strategy: Set the annotation to a hash of empty data
+//
+// This triggers a pod restart to reflect the resource deletion.
+func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resourceKind, resourceName string) error {
+	logger := log.FromContext(ctx)
+
+	strategy := target.ReloadStrategy
+	if strategy == "" {
+		strategy = util.ReloadStrategyEnvVars
+	}
+
+	// Normalize strategy for backward compatibility
+	strategy = util.NormalizeStrategy(strategy)
+
+	logger.Info("Triggering delete reload",
+		"kind", target.Kind,
+		"name", target.Name,
+		"namespace", target.Namespace,
+		"strategy", strategy,
+		"deletedResource", fmt.Sprintf("%s/%s", resourceKind, resourceName))
+
+	var err error
+	switch target.Kind {
+	case util.KindDeployment:
+		err = u.reloadDeleteDeployment(ctx, target.Name, target.Namespace, strategy)
+
+	case util.KindStatefulSet:
+		err = u.reloadDeleteStatefulSet(ctx, target.Name, target.Namespace, strategy)
+
+	case util.KindDaemonSet:
+		err = u.reloadDeleteDaemonSet(ctx, target.Name, target.Namespace, strategy)
+
+	default:
+		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
+	}
+
+	// If reload succeeded and this is an annotation-based workload, set last reload timestamp
+	if err == nil && target.Config == nil && target.PausePeriod != "" {
+		if annotErr := u.setLastReloadAnnotation(ctx, target); annotErr != nil {
+			logger.Error(annotErr, "Failed to set last reload annotation",
+				"kind", target.Kind,
+				"name", target.Name)
+			// Don't fail the reload if annotation update fails
+		}
+	}
+
+	return err
+}
+
 // reloadDeployment triggers a rolling update of a Deployment
 func (u *Updater) reloadDeployment(
 	ctx context.Context,
@@ -194,6 +248,114 @@ func (u *Updater) reloadDaemonSet(
 	return nil
 }
 
+// reloadDeleteDeployment triggers a rolling update of a Deployment using delete strategy
+func (u *Updater) reloadDeleteDeployment(
+	ctx context.Context,
+	name, namespace, strategy string,
+) error {
+	logger := log.FromContext(ctx)
+
+	deployment := &appsv1.Deployment{}
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+
+	if err := u.Get(ctx, key, deployment); err != nil {
+		return fmt.Errorf("failed to get Deployment: %w", err)
+	}
+
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, deployment.Spec.Selector, namespace, "Deployment", name)
+	}
+
+	// Apply the delete strategy (remove env var or set empty hash annotation)
+	if err := applyDeleteStrategy(&deployment.Spec.Template, strategy); err != nil {
+		return err
+	}
+
+	// Update the Deployment
+	if err := u.Update(ctx, deployment); err != nil {
+		return fmt.Errorf("failed to update Deployment: %w", err)
+	}
+
+	logger.Info("Successfully triggered Deployment delete reload",
+		"deployment", name,
+		"strategy", strategy)
+
+	return nil
+}
+
+// reloadDeleteStatefulSet triggers a rolling update of a StatefulSet using delete strategy
+func (u *Updater) reloadDeleteStatefulSet(
+	ctx context.Context,
+	name, namespace, strategy string,
+) error {
+	logger := log.FromContext(ctx)
+
+	statefulSet := &appsv1.StatefulSet{}
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+
+	if err := u.Get(ctx, key, statefulSet); err != nil {
+		return fmt.Errorf("failed to get StatefulSet: %w", err)
+	}
+
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, statefulSet.Spec.Selector, namespace, "StatefulSet", name)
+	}
+
+	// Apply the delete strategy
+	if err := applyDeleteStrategy(&statefulSet.Spec.Template, strategy); err != nil {
+		return err
+	}
+
+	// Update the StatefulSet
+	if err := u.Update(ctx, statefulSet); err != nil {
+		return fmt.Errorf("failed to update StatefulSet: %w", err)
+	}
+
+	logger.Info("Successfully triggered StatefulSet delete reload",
+		"statefulset", name,
+		"strategy", strategy)
+
+	return nil
+}
+
+// reloadDeleteDaemonSet triggers a rolling update of a DaemonSet using delete strategy
+func (u *Updater) reloadDeleteDaemonSet(
+	ctx context.Context,
+	name, namespace, strategy string,
+) error {
+	logger := log.FromContext(ctx)
+
+	daemonSet := &appsv1.DaemonSet{}
+	key := client.ObjectKey{Name: name, Namespace: namespace}
+
+	if err := u.Get(ctx, key, daemonSet); err != nil {
+		return fmt.Errorf("failed to get DaemonSet: %w", err)
+	}
+
+	// For restart strategy, delete pods instead of updating template
+	if strategy == util.ReloadStrategyRestart {
+		return u.restartWorkloadPods(ctx, daemonSet.Spec.Selector, namespace, "DaemonSet", name)
+	}
+
+	// Apply the delete strategy
+	if err := applyDeleteStrategy(&daemonSet.Spec.Template, strategy); err != nil {
+		return err
+	}
+
+	// Update the DaemonSet
+	if err := u.Update(ctx, daemonSet); err != nil {
+		return fmt.Errorf("failed to update DaemonSet: %w", err)
+	}
+
+	logger.Info("Successfully triggered DaemonSet delete reload",
+		"daemonset", name,
+		"strategy", strategy)
+
+	return nil
+}
+
 // applyReloadStrategy applies the chosen reload strategy to a pod template
 func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, hash string) error {
 	timestamp := time.Now().Format(time.RFC3339)
@@ -255,6 +417,83 @@ func applyAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp, hash 
 	// Update annotations
 	template.Annotations[util.AnnotationLastReload] = timestamp
 	template.Annotations[util.AnnotationResourceHash] = hash
+
+	return nil
+}
+
+// applyDeleteStrategy applies the delete reload strategy to a pod template
+//
+// Business Logic:
+// When a Secret/ConfigMap is deleted, we need to trigger a pod restart:
+// - env-vars strategy: SET the RELOADER_TRIGGERED_AT environment variable to a timestamp
+// - annotations strategy: Set the annotation to timestamp (triggers restart via annotation change)
+//
+// Both strategies ensure a rolling restart by making a change to the pod template.
+func applyDeleteStrategy(template *corev1.PodTemplateSpec, strategy string) error {
+	timestamp := time.Now().Format(time.RFC3339)
+
+	switch strategy {
+	case util.ReloadStrategyEnvVars:
+		return applyDeleteEnvVarsStrategy(template, timestamp)
+
+	case util.ReloadStrategyAnnotations:
+		return applyDeleteAnnotationsStrategy(template, timestamp)
+
+	default:
+		return fmt.Errorf("unknown reload strategy: %s", strategy)
+	}
+}
+
+// applyDeleteEnvVarsStrategy sets the RELOADER_TRIGGERED_AT environment variable to a timestamp
+// to trigger a rolling restart when a resource is deleted
+func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp string) error {
+	// Ensure we have at least one container
+	if len(template.Spec.Containers) == 0 {
+		return fmt.Errorf("no containers found in pod template")
+	}
+
+	// Set the RELOADER_TRIGGERED_AT env var to trigger a restart
+	// We use a timestamp to ensure the value changes and triggers a rolling update
+	container := &template.Spec.Containers[0]
+
+	// Find and update the env var, or add it if it doesn't exist
+	found := false
+	for i, env := range container.Env {
+		if env.Name == util.EnvReloaderTriggeredAt {
+			container.Env[i].Value = timestamp
+			found = true
+			break
+		}
+	}
+
+	// If not found, add it
+	if !found {
+		container.Env = append(container.Env, corev1.EnvVar{
+			Name:  util.EnvReloaderTriggeredAt,
+			Value: timestamp,
+		})
+	}
+
+	// Remove hash annotation from pod template
+	if template.Annotations != nil {
+		delete(template.Annotations, util.AnnotationResourceHash)
+	}
+
+	return nil
+}
+
+// applyDeleteAnnotationsStrategy sets annotations to indicate deletion
+func applyDeleteAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp string) error {
+	if template.Annotations == nil {
+		template.Annotations = make(map[string]string)
+	}
+
+	// Update annotation with timestamp to trigger restart
+	// We use the timestamp to force a change even if the resource is recreated
+	template.Annotations[util.AnnotationLastReload] = timestamp
+
+	// Remove the resource hash annotation (resource no longer exists)
+	delete(template.Annotations, util.AnnotationResourceHash)
 
 	return nil
 }

@@ -25,6 +25,7 @@ import (
 	// to ensure that exec-entrypoint and run can make use of them.
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	clientgoscheme "k8s.io/client-go/kubernetes/scheme"
@@ -63,6 +64,9 @@ func main() {
 	var probeAddr string
 	var secureMetrics bool
 	var enableHTTP2 bool
+	var reloadOnCreate bool
+	var reloadOnDelete bool
+	var resourceLabelSelector string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -81,6 +85,12 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
+	flag.BoolVar(&reloadOnCreate, "reload-on-create", false,
+		"Reload workloads when a watched ConfigMap or Secret is created")
+	flag.BoolVar(&reloadOnDelete, "reload-on-delete", false,
+		"Reload workloads when a watched ConfigMap or Secret is deleted")
+	flag.StringVar(&resourceLabelSelector, "resource-label-selector", "",
+		"Label selector to filter which ConfigMaps/Secrets are watched (e.g., 'app=myapp' or 'team=backend,env=prod')")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -88,6 +98,23 @@ func main() {
 	flag.Parse()
 
 	ctrl.SetLogger(zap.New(zap.UseFlagOptions(&opts)))
+
+	// Parse the resource label selector
+	var resourceSelector labels.Selector
+	if resourceLabelSelector != "" {
+		var err error
+		resourceSelector, err = labels.Parse(resourceLabelSelector)
+		if err != nil {
+			setupLog.Error(err, "invalid resource-label-selector",
+				"selector", resourceLabelSelector)
+			os.Exit(1)
+		}
+		setupLog.Info("Resource label selector enabled",
+			"selector", resourceLabelSelector)
+	} else {
+		// If no selector is provided, select everything
+		resourceSelector = labels.Everything()
+	}
 
 	// if the enable-http2 flag is false (the default), http/2 should be disabled
 	// due to its vulnerabilities. More specifically, disabling http/2 will
@@ -182,11 +209,14 @@ func main() {
 
 	// Initialize the controller with workload finder, updater, and alert manager
 	reconciler := &controller.ReloaderConfigReconciler{
-		Client:          mgr.GetClient(),
-		Scheme:          mgr.GetScheme(),
-		WorkloadFinder:  workload.NewFinder(mgr.GetClient()),
-		WorkloadUpdater: workload.NewUpdater(mgr.GetClient()),
-		AlertManager:    alerts.NewManager(mgr.GetClient()),
+		Client:                mgr.GetClient(),
+		Scheme:                mgr.GetScheme(),
+		WorkloadFinder:        workload.NewFinder(mgr.GetClient()),
+		WorkloadUpdater:       workload.NewUpdater(mgr.GetClient()),
+		AlertManager:          alerts.NewManager(mgr.GetClient()),
+		ReloadOnCreate:        reloadOnCreate,
+		ReloadOnDelete:        reloadOnDelete,
+		ResourceLabelSelector: resourceSelector,
 	}
 
 	if err := reconciler.SetupWithManager(mgr); err != nil {

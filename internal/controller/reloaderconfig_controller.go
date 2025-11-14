@@ -19,12 +19,14 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/util/workqueue"
 	ctrl "sigs.k8s.io/controller-runtime"
@@ -73,6 +75,16 @@ type ReloaderConfigReconciler struct {
 	statusQueue     workqueue.TypedRateLimitingInterface[statusUpdateWorkItem]
 	ctx             context.Context
 	cancelFunc      context.CancelFunc
+
+	// Global flags for reload behavior
+	ReloadOnCreate bool
+	ReloadOnDelete bool
+
+	// Resource filtering
+	ResourceLabelSelector labels.Selector
+
+	// Initialization tracking (safeguard to prevent processing events during startup)
+	controllersInitialized atomic.Bool
 }
 
 // startStatusUpdateWorker runs a worker goroutine that processes status update queue items
@@ -145,7 +157,15 @@ func (r *ReloaderConfigReconciler) updateReloaderConfigStatusDirect(ctx context.
 	}
 
 	hashKey := fmt.Sprintf("%s/%s/%s", resourceNamespace, resourceKind, resourceName)
-	config.Status.WatchedResourceHashes[hashKey] = newHash
+
+	// Empty hash signals deletion - remove the entry
+	if newHash == "" {
+		delete(config.Status.WatchedResourceHashes, hashKey)
+	} else {
+		// Update or add the hash
+		config.Status.WatchedResourceHashes[hashKey] = newHash
+	}
+
 	config.Status.ReloadCount++
 
 	now := metav1.Now()
@@ -275,31 +295,75 @@ func (r *ReloaderConfigReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 
 	// Try to fetch as Secret
 	secret := &corev1.Secret{}
-	err = r.Get(ctx, req.NamespacedName, secret)
+	secretErr := r.Get(ctx, req.NamespacedName, secret)
 
-	if err == nil {
-		// This is a Secret change - data was updated
-		logger.Info("Reconciling Secret", "name", secret.Name, "namespace", secret.Namespace)
+	if secretErr == nil {
+		// Secret exists - determine if it's a create or update event
+		lastHash := secret.Annotations[util.AnnotationLastHash]
+
+		if lastHash == "" && r.ReloadOnCreate {
+			// No last-hash annotation means this is a newly created Secret
+			logger.Info("Reconciling Secret (CREATE)", "name", secret.Name, "namespace", secret.Namespace)
+			return r.reconcileSecretCreated(ctx, secret)
+		}
+
+		// Has last-hash annotation or ReloadOnCreate is disabled - treat as update
+		logger.Info("Reconciling Secret (UPDATE)", "name", secret.Name, "namespace", secret.Namespace)
 		return r.reconcileSecret(ctx, secret)
 	}
 
-	if !apierrors.IsNotFound(err) {
-		logger.Error(err, "Failed to get Secret")
-		return ctrl.Result{}, err
+	if !apierrors.IsNotFound(secretErr) {
+		logger.Error(secretErr, "Failed to get Secret")
+		return ctrl.Result{}, secretErr
 	}
 
 	// Try to fetch as ConfigMap
 	configMap := &corev1.ConfigMap{}
-	err = r.Get(ctx, req.NamespacedName, configMap)
+	configMapErr := r.Get(ctx, req.NamespacedName, configMap)
 
-	if err == nil {
-		// This is a ConfigMap change - data was updated
-		logger.Info("Reconciling ConfigMap", "name", configMap.Name, "namespace", configMap.Namespace)
+	if configMapErr == nil {
+		// ConfigMap exists - determine if it's a create or update event
+		lastHash := configMap.Annotations[util.AnnotationLastHash]
+
+		if lastHash == "" && r.ReloadOnCreate {
+			// No last-hash annotation means this is a newly created ConfigMap
+			logger.Info("Reconciling ConfigMap (CREATE)", "name", configMap.Name, "namespace", configMap.Namespace)
+			return r.reconcileConfigMapCreated(ctx, configMap)
+		}
+
+		// Has last-hash annotation or ReloadOnCreate is disabled - treat as update
+		logger.Info("Reconciling ConfigMap (UPDATE)", "name", configMap.Name, "namespace", configMap.Namespace)
 		return r.reconcileConfigMap(ctx, configMap)
 	}
 
+	if !apierrors.IsNotFound(configMapErr) {
+		logger.Error(configMapErr, "Failed to get ConfigMap")
+		return ctrl.Result{}, configMapErr
+	}
+
+	// Both Secret and ConfigMap not found - check if this is a delete event
+	if r.ReloadOnDelete {
+		// We need to determine if this was a Secret or ConfigMap that was deleted
+		// Try to check which watcher triggered this event by examining recent activity
+		// For now, we'll try both delete handlers and let them handle the case gracefully
+
+		// Check if there are any ReloaderConfigs watching a Secret with this name
+		secretTargets, secretConfigs, _ := r.discoverTargets(ctx, util.KindSecret, req.Name, req.Namespace)
+		if len(secretTargets) > 0 || len(secretConfigs) > 0 {
+			logger.Info("Reconciling Secret (DELETE)", "name", req.Name, "namespace", req.Namespace)
+			return r.reconcileSecretDeleted(ctx, req.NamespacedName)
+		}
+
+		// Check if there are any ReloaderConfigs watching a ConfigMap with this name
+		configMapTargets, configMapConfigs, _ := r.discoverTargets(ctx, util.KindConfigMap, req.Name, req.Namespace)
+		if len(configMapTargets) > 0 || len(configMapConfigs) > 0 {
+			logger.Info("Reconciling ConfigMap (DELETE)", "name", req.Name, "namespace", req.Namespace)
+			return r.reconcileConfigMapDeleted(ctx, req.NamespacedName)
+		}
+	}
+
 	// Resource was deleted or doesn't exist - nothing to do
-	return ctrl.Result{}, client.IgnoreNotFound(err)
+	return ctrl.Result{}, nil
 }
 
 // reconcileReloaderConfig handles ReloaderConfig CRD changes
@@ -628,6 +692,172 @@ func (r *ReloaderConfigReconciler) reconcileConfigMap(
 	}
 
 	logger.Info("ConfigMap reconciliation complete", "hash", currentHash, "reloadedTargets", len(allTargets))
+	return ctrl.Result{}, nil
+}
+
+// reconcileSecretCreated handles Secret CREATE events when --reload-on-create is enabled
+//
+// Business Logic:
+// When a new Secret is created, this function triggers workload reloads for all workloads
+// that are configured to watch this Secret (via annotations or ReloaderConfig).
+// Unlike updates, there's no previous hash to compare, so we always trigger the reload.
+func (r *ReloaderConfigReconciler) reconcileSecretCreated(
+	ctx context.Context,
+	secret *corev1.Secret,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Secret created", "name", secret.Name, "namespace", secret.Namespace)
+
+	// Calculate hash for the new Secret
+	currentHash := util.CalculateHash(secret.Data)
+
+	// Discover all workloads that need to be reloaded
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindSecret, secret.Name, secret.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Found targets for reload on create",
+		"secret", secret.Name,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
+
+	// Execute reloads for filtered targets
+	successCount := r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, currentHash)
+
+	// Update ReloaderConfig statuses (only if at least one reload succeeded)
+	if successCount > 0 {
+		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
+	}
+
+	// Persist hash in Secret annotation for future update events
+	if err := r.updateResourceHash(ctx, secret, currentHash); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Secret create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount)
+	return ctrl.Result{}, nil
+}
+
+// reconcileSecretDeleted handles Secret DELETE events when --reload-on-delete is enabled
+//
+// Business Logic:
+// When a Secret is deleted, this function triggers workload reloads using the delete strategy.
+// The delete strategy either removes the environment variable or sets the annotation to an empty hash.
+// Note: The Secret object no longer exists, so we work with the NamespacedName only.
+func (r *ReloaderConfigReconciler) reconcileSecretDeleted(
+	ctx context.Context,
+	secretKey client.ObjectKey,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("Secret deleted", "name", secretKey.Name, "namespace", secretKey.Namespace)
+
+	// Discover all workloads that were watching this Secret
+	// Note: We can still find these because the workload annotations/ReloaderConfigs still exist
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindSecret, secretKey.Name, secretKey.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Found targets for reload on delete",
+		"secret", secretKey.Name,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secretKey.Name, secretKey.Namespace)
+
+	// Execute delete-specific reloads for filtered targets
+	successCount := r.executeDeleteReloads(ctx, filteredTargets, util.KindSecret, secretKey.Name)
+
+	// Update ReloaderConfig statuses (only if at least one reload succeeded)
+	// For delete events, we remove the hash entry from the status
+	if successCount > 0 {
+		r.removeReloaderConfigStatusEntries(ctx, reloaderConfigs, secretKey.Namespace, util.KindSecret, secretKey.Name)
+	}
+
+	logger.Info("Secret delete reconciliation complete", "reloadedTargets", successCount)
+	return ctrl.Result{}, nil
+}
+
+// reconcileConfigMapCreated handles ConfigMap CREATE events when --reload-on-create is enabled
+func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
+	ctx context.Context,
+	configMap *corev1.ConfigMap,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("ConfigMap created", "name", configMap.Name, "namespace", configMap.Namespace)
+
+	// Calculate hash for the new ConfigMap
+	data := util.MergeDataMaps(configMap.Data, configMap.BinaryData)
+	currentHash := util.CalculateHash(data)
+
+	// Discover all workloads that need to be reloaded
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindConfigMap, configMap.Name, configMap.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Found targets for reload on create",
+		"configMap", configMap.Name,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
+
+	// Execute reloads for filtered targets
+	successCount := r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, currentHash)
+
+	// Update ReloaderConfig statuses (only if at least one reload succeeded)
+	if successCount > 0 {
+		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
+	}
+
+	// Persist hash in ConfigMap annotation for future update events
+	if err := r.updateResourceHash(ctx, configMap, currentHash); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("ConfigMap create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount)
+	return ctrl.Result{}, nil
+}
+
+// reconcileConfigMapDeleted handles ConfigMap DELETE events when --reload-on-delete is enabled
+func (r *ReloaderConfigReconciler) reconcileConfigMapDeleted(
+	ctx context.Context,
+	configMapKey client.ObjectKey,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	logger.Info("ConfigMap deleted", "name", configMapKey.Name, "namespace", configMapKey.Namespace)
+
+	// Discover all workloads that were watching this ConfigMap
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindConfigMap, configMapKey.Name, configMapKey.Namespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Found targets for reload on delete",
+		"configMap", configMapKey.Name,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMapKey.Name, configMapKey.Namespace)
+
+	// Execute delete-specific reloads for filtered targets
+	successCount := r.executeDeleteReloads(ctx, filteredTargets, util.KindConfigMap, configMapKey.Name)
+
+	// Update ReloaderConfig statuses (only if at least one reload succeeded)
+	// For delete events, we remove the hash entry from the status
+	if successCount > 0 {
+		r.removeReloaderConfigStatusEntries(ctx, reloaderConfigs, configMapKey.Namespace, util.KindConfigMap, configMapKey.Name)
+	}
+
+	logger.Info("ConfigMap delete reconciliation complete", "reloadedTargets", successCount)
 	return ctrl.Result{}, nil
 }
 
@@ -1151,6 +1381,120 @@ func (r *ReloaderConfigReconciler) handleReloadSuccess(
 	}
 }
 
+// executeDeleteReloads executes delete-specific reloads for all target workloads
+//
+// Business Logic:
+// Similar to executeReloads, but uses the delete strategy which either:
+// - env-vars strategy: REMOVES the environment variable that was previously added
+// - annotations strategy: Sets the annotation to the hash of empty data
+//
+// This is called when a Secret/ConfigMap is deleted and --reload-on-delete is enabled.
+func (r *ReloaderConfigReconciler) executeDeleteReloads(
+	ctx context.Context,
+	targets []workload.Target,
+	resourceKind string,
+	resourceName string,
+) int {
+	logger := log.FromContext(ctx)
+	successCount := 0
+
+	for _, target := range targets {
+		// Refetch the ReloaderConfig to get the latest status (including PausedUntil)
+		if target.Config != nil {
+			freshConfig := &reloaderv1alpha1.ReloaderConfig{}
+			configKey := client.ObjectKey{
+				Name:      target.Config.Name,
+				Namespace: target.Config.Namespace,
+			}
+			if err := r.Get(ctx, configKey, freshConfig); err != nil {
+				logger.Error(err, "Failed to fetch fresh ReloaderConfig for pause check",
+					"config", target.Config.Name)
+			} else {
+				target.Config = freshConfig
+			}
+		}
+
+		// Check if workload is in pause period
+		isPaused, err := r.WorkloadUpdater.IsPaused(ctx, target)
+		if err != nil {
+			logger.Error(err, "Failed to check pause status", "workload", target.Name)
+			continue
+		}
+
+		if isPaused {
+			logger.Info("Skipping delete reload - workload is in pause period",
+				"kind", target.Kind,
+				"name", target.Name,
+				"namespace", target.Namespace)
+			continue
+		}
+
+		// Trigger the delete reload (using delete strategy)
+		err = r.WorkloadUpdater.TriggerDeleteReload(ctx, target, resourceKind, resourceName)
+		if err != nil {
+			logger.Error(err, "Failed to reload workload on delete",
+				"kind", target.Kind,
+				"name", target.Name,
+				"namespace", target.Namespace)
+
+			r.handleReloadError(ctx, target, resourceKind, resourceName, err)
+			continue
+		}
+
+		// Reload succeeded
+		logger.Info("Successfully triggered delete reload",
+			"kind", target.Kind,
+			"name", target.Name,
+			"namespace", target.Namespace,
+			"strategy", target.ReloadStrategy)
+
+		r.handleReloadSuccess(ctx, target, resourceKind, resourceName)
+		successCount++
+	}
+
+	return successCount
+}
+
+// removeReloaderConfigStatusEntries removes hash entries from ReloaderConfig statuses
+//
+// Business Logic:
+// When a Secret/ConfigMap is deleted, we should remove its hash entry from all
+// ReloaderConfig statuses that were tracking it. This keeps the status clean and
+// prevents stale entries.
+func (r *ReloaderConfigReconciler) removeReloaderConfigStatusEntries(
+	ctx context.Context,
+	configs []*reloaderv1alpha1.ReloaderConfig,
+	resourceNamespace string,
+	resourceKind string,
+	resourceName string,
+) {
+	logger := log.FromContext(ctx)
+
+	for _, config := range configs {
+		// Create a key for this resource in the hash map
+		hashKey := fmt.Sprintf("%s/%s/%s", resourceNamespace, resourceKind, resourceName)
+
+		// Check if this resource is tracked in the status
+		if _, exists := config.Status.WatchedResourceHashes[hashKey]; !exists {
+			continue
+		}
+
+		// Queue status update to remove the hash entry
+		r.statusQueue.Add(statusUpdateWorkItem{
+			updateType:        statusUpdateTypeReloaderConfig,
+			configKey:         client.ObjectKeyFromObject(config),
+			resourceNamespace: resourceNamespace,
+			resourceKind:      resourceKind,
+			resourceName:      resourceName,
+			newHash:           "", // Empty hash signals deletion
+		})
+
+		logger.V(1).Info("Queued status update to remove deleted resource hash",
+			"config", config.Name,
+			"resource", fmt.Sprintf("%s/%s", resourceKind, resourceName))
+	}
+}
+
 // updateReloaderConfigStatuses updates status for all ReloaderConfigs that watched this resource
 //
 // Business Logic:
@@ -1274,6 +1618,21 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 		return err
 	}
 
+	// Initialize controllers after cache sync to prevent spurious reloads during startup
+	// This is a safeguard similar to the original Reloader's secretControllerInitialized flag
+	if err := mgr.Add(manager.RunnableFunc(func(ctx context.Context) error {
+		// Wait for cache to sync
+		if mgr.GetCache().WaitForCacheSync(ctx) {
+			r.controllersInitialized.Store(true)
+			log.Log.Info("Controllers initialized - CREATE/DELETE events will now be processed")
+		}
+		// Keep running until context is done
+		<-ctx.Done()
+		return nil
+	})); err != nil {
+		return err
+	}
+
 	return ctrl.NewControllerManagedBy(mgr).
 		// Watch ReloaderConfig CRD
 		For(&reloaderv1alpha1.ReloaderConfig{}).
@@ -1285,14 +1644,28 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			// Only trigger on actual data changes
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc: func(e event.CreateEvent) bool {
-					return true // Always process creates
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
+						return false
+					}
+					// Only process creates if flag is enabled and controllers are initialized
+					return r.ReloadOnCreate && r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					// Only trigger if annotations, data, or labels changed
-					return true // We'll check hash in reconcile
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.ObjectNew.GetLabels())) {
+						return false
+					}
+					// Always process updates (hash check happens in reconcile)
+					return true
 				},
 				DeleteFunc: func(e event.DeleteEvent) bool {
-					return true // Process deletes
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
+						return false
+					}
+					// Only process deletes if flag is enabled and controllers are initialized
+					return r.ReloadOnDelete && r.controllersInitialized.Load()
 				},
 			}),
 		).
@@ -1303,13 +1676,28 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 			handler.EnqueueRequestsFromMapFunc(r.mapConfigMapToRequests),
 			builder.WithPredicates(predicate.Funcs{
 				CreateFunc: func(e event.CreateEvent) bool {
-					return true
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
+						return false
+					}
+					// Only process creates if flag is enabled and controllers are initialized
+					return r.ReloadOnCreate && r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
-					return true // We'll check hash in reconcile
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.ObjectNew.GetLabels())) {
+						return false
+					}
+					// Always process updates (hash check happens in reconcile)
+					return true
 				},
 				DeleteFunc: func(e event.DeleteEvent) bool {
-					return true
+					// Check label selector first
+					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
+						return false
+					}
+					// Only process deletes if flag is enabled and controllers are initialized
+					return r.ReloadOnDelete && r.controllersInitialized.Load()
 				},
 			}),
 		).

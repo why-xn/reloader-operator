@@ -1,0 +1,26 @@
+# E2E testing configuration with reload-on-create and reload-on-delete enabled
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Include all resources from the default configuration
+resources:
+  - ../default
+
+# Patch the manager deployment to enable reload-on-create and reload-on-delete flags
+patches:
+  - patch: |-
+      apiVersion: apps/v1
+      kind: Deployment
+      metadata:
+        name: controller-manager
+        namespace: system
+      spec:
+        template:
+          spec:
+            containers:
+              - name: manager
+                args:
+                  - --leader-elect
+                  - --health-probe-bind-address=:8081
+                  - --reload-on-create=true
+                  - --reload-on-delete=true

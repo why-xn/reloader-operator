@@ -180,6 +180,20 @@ e2e-status: ## Check E2E environment status
 	@kubectl get all -n test-reloader 2>/dev/null || echo "  (no resources in test-reloader namespace)"
 	@echo ""
 
+.PHONY: e2e-test-label-selector
+e2e-test-label-selector: ## Run label selector E2E tests (requires e2e-setup to be run first)
+	@echo "========================================="
+	@echo "Running Label Selector E2E Tests"
+	@echo "========================================="
+	@echo "NOTE: This test temporarily patches the operator with --resource-label-selector=app=reloader-test"
+	@echo "      The configuration will be restored after tests complete."
+	@echo ""
+	@E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e-label-selector/ -v -ginkgo.v -timeout 15m $(GINKGO_ARGS)
+	@echo "========================================="
+	@echo "✓ Label Selector E2E Tests Complete!"
+	@echo "========================================="
+	@echo ""
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
@@ -256,6 +270,17 @@ uninstall: manifests kustomize ## Uninstall CRDs from the K8s cluster specified 
 deploy: manifests kustomize ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
 	$(KUSTOMIZE) build config/default | $(KUBECTL) apply -f -
+
+.PHONY: enable-reload-on-create-and-delete
+enable-reload-on-create-and-delete: ## Enable reload-on-create and reload-on-delete flags in the deployed operator
+	@echo "Enabling reload-on-create and reload-on-delete flags..."
+	@kubectl patch deployment reloader-operator-controller-manager \
+		-n reloader-operator-system \
+		--type=json \
+		-p='[{"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--reload-on-create=true"}, {"op": "add", "path": "/spec/template/spec/containers/0/args/-", "value": "--reload-on-delete=true"}]'
+	@echo "Waiting for rollout to complete..."
+	@kubectl rollout status deployment/reloader-operator-controller-manager -n reloader-operator-system --timeout=120s
+	@echo "✓ reload-on-create and reload-on-delete enabled successfully"
 
 .PHONY: undeploy
 undeploy: kustomize ## Undeploy controller from the K8s cluster specified in ~/.kube/config. Call with ignore-not-found=true to ignore resource not found errors during deletion.
