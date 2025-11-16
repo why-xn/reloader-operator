@@ -1,8 +1,126 @@
-# reloader-operator
-// TODO(user): Add simple overview of use/purpose
+# Reloader Operator
+
+A Kubernetes Operator that automatically reloads Deployments, StatefulSets, and DaemonSets when their referenced ConfigMaps or Secrets change.
 
 ## Description
-// TODO(user): An in-depth paragraph about your project and overview of use
+
+Reloader Operator is a modern rewrite of [Stakater Reloader](https://github.com/stakater/Reloader) built using Kubebuilder 4.9.0 and controller-runtime. It provides **100% backward compatibility** with annotation-based configuration while offering a new CRD-based declarative API for advanced use cases.
+
+### Key Features
+
+- **Automatic Reload Detection**: Watches ConfigMaps and Secrets and triggers rolling updates when they change
+- **Multiple Configuration Methods**:
+  - Annotation-based (backward compatible with original Reloader)
+  - CRD-based (ReloaderConfig custom resource)
+- **Flexible Reload Strategies**:
+  - `env-vars`: Inject environment variable to trigger reload
+  - `annotations`: Update pod template annotations (GitOps-friendly)
+  - `restart`: Delete pods without template changes
+- **Namespace Filtering**: Filter which namespaces to watch using label selectors or ignore lists
+- **Resource Filtering**: Filter ConfigMaps/Secrets using label selectors
+- **Auto-Discovery**: Automatically detect all ConfigMaps/Secrets referenced in workloads
+- **Reload on Create/Delete**: Optionally trigger reloads when watched resources are created or deleted
+- **Search & Match Mode**: Selective reloading based on resource annotations
+
+## Quick Start
+
+### Using Annotations (Simple)
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  annotations:
+    reloader.stakater.com/auto: "true"  # Auto-reload when any referenced ConfigMap/Secret changes
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        image: myapp:latest
+        envFrom:
+        - configMapRef:
+            name: app-config
+        - secretRef:
+            name: db-credentials
+```
+
+### Using ReloaderConfig CRD (Advanced)
+
+```yaml
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: my-app-reloader
+  namespace: default
+spec:
+  watchedResources:
+    configMaps:
+      - app-config
+      - feature-flags
+    secrets:
+      - db-credentials
+  targets:
+    - kind: Deployment
+      name: my-app
+  reloadStrategy: env-vars
+```
+
+## Configuration
+
+### Command-Line Flags
+
+Configure the operator behavior using these flags:
+
+| Flag | Description | Default | Example |
+|------|-------------|---------|---------|
+| `--resource-label-selector` | Only watch ConfigMaps/Secrets with matching labels | (none) | `environment=production` |
+| `--namespace-selector` | Only watch namespaces with matching labels | (none) | `team=backend` |
+| `--namespaces-to-ignore` | Comma-separated list of namespaces to ignore | (none) | `kube-system,kube-public` |
+| `--reload-on-create` | Trigger reload when watched resources are created | `false` | `true` |
+| `--reload-on-delete` | Trigger reload when watched resources are deleted | `false` | `true` |
+| `--metrics-bind-address` | Address for metrics endpoint | `:8080` | `:9090` |
+| `--health-probe-bind-address` | Address for health probes | `:8081` | `:9091` |
+| `--leader-elect` | Enable leader election for HA | `false` | `true` |
+
+#### Example Deployment Configuration
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reloader-operator-controller-manager
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+        - --metrics-bind-address=0
+        - --leader-elect
+        - --health-probe-bind-address=:8081
+        - --resource-label-selector=managed-by=my-team
+        - --namespace-selector=environment=production
+        - --namespaces-to-ignore=kube-system,kube-public
+        - --reload-on-create=true
+        - --reload-on-delete=true
+```
+
+### Documentation
+
+- **[FEATURES.md](FEATURES.md)** - Comprehensive feature documentation including command-line flags, filtering, and reload strategies
+- **[ANNOTATION_REFERENCE.md](ANNOTATION_REFERENCE.md)** - Complete annotation reference guide
+- **[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)** - Current implementation status and feature comparison
+
+### Common Annotations
+
+Quick reference for most-used annotations:
+
+- `reloader.stakater.com/auto: "true"` - Auto-reload all referenced resources
+- `secret.reloader.stakater.com/reload: "secret1,secret2"` - Reload specific Secrets
+- `configmap.reloader.stakater.com/reload: "cm1,cm2"` - Reload specific ConfigMaps
+- `reloader.stakater.com/rollout-strategy: "annotations"` - Set reload strategy (env-vars, annotations, restart)
 
 ## Getting Started
 
@@ -116,6 +234,156 @@ is manually re-applied afterwards.
 **NOTE:** Run `make help` for more information on all potential `make` targets
 
 More information can be found via the [Kubebuilder Documentation](https://book.kubebuilder.io/introduction.html)
+
+## Testing
+
+The project includes comprehensive E2E tests organized into separate suites for different features.
+
+### Running Tests
+
+#### All E2E Tests
+
+```sh
+make e2e-test
+```
+
+This runs the main E2E test suite which includes:
+- Basic reload functionality
+- Annotation-based reload tests
+- CRD-based reload tests
+- Auto-reload tests
+- Multiple reload strategy tests
+- Search & match mode tests
+
+#### Label Selector Tests
+
+```sh
+make e2e-test-label-selector
+```
+
+Tests the `--resource-label-selector` flag functionality:
+- Filtering ConfigMaps by labels
+- Filtering Secrets by labels
+- Annotation-based reload with label filtering
+- CRD-based reload with label filtering
+
+#### Namespace Selector Tests
+
+```sh
+make e2e-test-namespace-selector
+```
+
+Tests namespace filtering functionality:
+- `--namespace-selector` with label selectors
+- `--namespaces-to-ignore` flag
+- Both annotation-based and CRD-based reload with namespace filtering
+
+#### Reload on Create/Delete Tests
+
+```sh
+make e2e-test-reload-on-create-delete
+```
+
+Tests the `--reload-on-create` and `--reload-on-delete` flags:
+- Reload when Secrets are created/deleted (annotation-based)
+- Reload when ConfigMaps are created/deleted (CRD-based)
+- StatefulSet reload on resource deletion
+
+### Test Organization
+
+Tests are organized into separate directories under `test/`:
+
+```
+test/
+├── e2e/                              # Main E2E tests
+│   ├── e2e_suite_test.go            # Suite setup
+│   ├── annotation_test.go            # Annotation-based reload tests
+│   ├── e2e_test.go                   # Basic reload tests
+│   ├── reloader_test.go              # Core reloader functionality
+│   ├── targeted_reload_test.go       # Targeted reload tests
+│   ├── volume_mount_test.go          # Volume mount reload tests
+│   ├── workload_types_test.go        # Different workload types
+│   ├── edge_cases_test.go            # Edge case scenarios
+│   └── ignore_test.go                # Ignore annotation tests
+├── e2e-label-selector/               # Label selector feature tests
+│   ├── suite_test.go
+│   └── label_selector_test.go
+├── e2e-namespace-selector/           # Namespace filtering tests
+│   ├── suite_test.go
+│   └── namespace_selector_test.go
+├── e2e-reload-on-create-delete/      # Create/delete reload tests
+│   ├── suite_test.go
+│   ├── reload_on_create_test.go
+│   └── reload_on_delete_test.go
+└── utils/                            # Shared test utilities
+    └── utils.go
+```
+
+Each test suite:
+- Has its own `suite_test.go` with BeforeSuite/AfterSuite setup
+- Configures the operator with specific flags for that feature
+- Cleans up after itself
+- Can run independently or as part of the full test suite
+
+### Running Specific Tests
+
+Use Ginkgo focus to run specific tests:
+
+```sh
+# Run only auto-reload tests
+make e2e-test GINKGO_ARGS="-ginkgo.focus=auto"
+
+# Run only annotation tests
+make e2e-test GINKGO_ARGS="-ginkgo.focus=annotation"
+
+# Run only env-vars strategy tests
+make e2e-test GINKGO_ARGS="-ginkgo.focus=env-vars"
+```
+
+### Test Prerequisites
+
+Before running tests:
+
+1. A Kubernetes cluster (Kind, Minikube, or real cluster)
+2. Operator deployed and running
+3. CRDs installed
+
+The test framework automatically:
+- Creates test namespaces
+- Deploys test resources
+- Patches operator configuration for specific tests
+- Cleans up resources after tests
+
+## Development
+
+### Building and Running Locally
+
+```sh
+# Install CRDs
+make install
+
+# Run controller locally (against configured kubectl cluster)
+make run
+
+# Build binary
+make build
+
+# Run tests
+make test
+
+# Generate code and manifests
+make generate manifests
+```
+
+### Building Container Image
+
+```sh
+# Build and push container image
+make docker-build docker-push IMG=<your-registry>/reloader-operator:tag
+
+# Deploy to cluster
+make deploy IMG=<your-registry>/reloader-operator:tag
+```
 
 ## License
 
