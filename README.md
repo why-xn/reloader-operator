@@ -109,9 +109,10 @@ spec:
 
 ### Documentation
 
-- **[FEATURES.md](FEATURES.md)** - Comprehensive feature documentation including command-line flags, filtering, and reload strategies
-- **[ANNOTATION_REFERENCE.md](ANNOTATION_REFERENCE.md)** - Complete annotation reference guide
-- **[IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md)** - Current implementation status and feature comparison
+- **[docs/FEATURES.md](docs/FEATURES.md)** - Comprehensive feature documentation including command-line flags, filtering, and reload strategies
+- **[docs/ANNOTATION_REFERENCE.md](docs/ANNOTATION_REFERENCE.md)** - Complete annotation reference guide
+- **[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)** - Current implementation status and feature comparison
+- **[docs/CRD_SCHEMA.md](docs/CRD_SCHEMA.md)** - ReloaderConfig CRD schema reference
 
 ### Common Annotations
 

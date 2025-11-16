@@ -683,10 +683,10 @@ reloader.stakater.com/rollout-strategy: "annotations"
 
 ## Related Documentation
 
-- [README.md](README.md) - Getting started guide
+- [README.md](../README.md) - Getting started guide
 - [ANNOTATION_REFERENCE.md](ANNOTATION_REFERENCE.md) - Complete annotation documentation
 - [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation status
-- [CRD_SCHEMA.md](docs/CRD_SCHEMA.md) - ReloaderConfig CRD reference
+- [CRD_SCHEMA.md](CRD_SCHEMA.md) - ReloaderConfig CRD reference
 
 ---
 
