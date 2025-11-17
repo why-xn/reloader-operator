@@ -7,32 +7,138 @@ metadata:
   name: reloaderconfig-sample
   namespace: default
 spec:
-  # Watch specific Secrets and ConfigMaps
+  # ============================================================================
+  # WATCHED RESOURCES - Define which Secrets/ConfigMaps to watch for changes
+  # ============================================================================
   watchedResources:
+    # Specific Secrets to watch for changes
     secrets:
       - db-credentials
       - api-keys
+      - tls-certs
+
+    # Specific ConfigMaps to watch for changes
     configMaps:
       - app-config
       - feature-flags
+      - nginx-config
 
-  # Target workloads to reload when watched resources change
-  targets:
-    - kind: Deployment
-      name: web-app
-      reloadStrategy: env-vars
-      pausePeriod: 5m
+    # EnableTargetedReload: When true, watched resources only trigger reloads
+    # for targets that have requireReference=true AND actually reference the resource
+    # This prevents unnecessary reloads when multiple targets share a ReloaderConfig
+    enableTargetedReload: false
 
-    - kind: StatefulSet
-      name: database
-      reloadStrategy: annotations
+    # ResourceSelector: Filter resources by labels (alternative to explicit lists)
+    # Uncomment to watch all resources with matching labels instead of explicit names
+    # resourceSelector:
+    #   matchLabels:
+    #     app: myapp
+    #     team: backend
+    #   matchExpressions:
+    #     - key: environment
+    #       operator: In
+    #       values: ["production", "staging"]
 
-  # Global reload strategy (can be overridden per target)
+    # NamespaceSelector: Watch resources across multiple namespaces
+    # Uncomment to enable cross-namespace watching
+    # namespaceSelector:
+    #   matchLabels:
+    #     team: backend
+    #   matchExpressions:
+    #     - key: environment
+    #       operator: NotIn
+    #       values: ["development"]
+
+  # ============================================================================
+  # AUTO-RELOAD - Automatically watch all resources referenced by targets
+  # ============================================================================
+  # AutoReloadAll: When true, automatically reload targets when ANY Secret/ConfigMap
+  # referenced in their pod specs (volumes, env vars, etc.) changes
+  # This is mutually exclusive with watchedResources - use one or the other
+  # autoReloadAll: true
+
+  # ============================================================================
+  # LABEL MATCHING - Filter resources by labels at the spec level
+  # ============================================================================
+  # MatchLabels: Resources must have these labels to trigger reload
+  # This works in conjunction with watchedResources or autoReloadAll
+  # matchLabels:
+  #   managed-by: reloader
+  #   critical: "true"
+
+  # ============================================================================
+  # IGNORE RESOURCES - Exclude specific resources from triggering reloads
+  # ============================================================================
+  # IgnoreResources: Skip these resources even if they match watch criteria
+  # Useful for excluding service account tokens, operator-managed resources, etc.
+  # ignoreResources:
+  #   - kind: Secret
+  #     name: default-token-xyz
+  #     namespace: default
+  #   - kind: ConfigMap
+  #     name: kube-root-ca.crt
+
+  # ============================================================================
+  # GLOBAL STRATEGIES - Default behavior for all targets
+  # ============================================================================
+
+  # RolloutStrategy: How to deploy changes to workloads
+  # - "rollout" (default): Modifies pod template to trigger rolling update
+  # - "restart": Deletes pods directly (most GitOps-friendly, no template changes)
+  rolloutStrategy: rollout
+
+  # ReloadStrategy: How to modify pod template when rolloutStrategy is "rollout"
+  # - "env-vars" (default): Updates resource-specific env vars (e.g., STAKATER_DB_CREDENTIALS_SECRET)
+  # - "annotations": Updates pod template annotations (better for GitOps workflows)
+  # This field is ignored when rolloutStrategy is "restart"
   reloadStrategy: env-vars
 
-  # Alert configuration
-  alerts:
-    slack:
-      secretRef:
-        name: slack-webhook
-        key: url
+  # ============================================================================
+  # TARGET WORKLOADS - Define which workloads to reload when resources change
+  # ============================================================================
+  targets:
+    # Example 1: Deployment with default strategies (from global)
+    - kind: Deployment
+      name: web-app
+      # namespace: default  # Optional - defaults to ReloaderConfig's namespace
+
+    # Example 2: StatefulSet with custom reload strategy and pause period
+    - kind: StatefulSet
+      name: database
+      # Override global reloadStrategy for this target only
+      reloadStrategy: annotations
+      # PausePeriod: Prevent multiple reloads within this duration
+      # Useful to avoid cascading reloads when multiple resources change
+      pausePeriod: 5m
+
+    # Example 3: DaemonSet with restart strategy override
+    - kind: DaemonSet
+      name: log-collector
+      # Override global rolloutStrategy for this target only
+      # "restart" deletes pods without modifying template (GitOps-friendly)
+      rolloutStrategy: restart
+
+    # Example 4: Cross-namespace target with targeted reload
+    - kind: Deployment
+      name: api-service
+      namespace: production
+      # RequireReference: Only reload if watchedResources.enableTargetedReload=true
+      # AND this workload actually references the changed resource
+      requireReference: true
+      pausePeriod: 10m
+
+    # Example 5: Argo Rollout
+    # - kind: Rollout
+    #   name: canary-app
+    #   reloadStrategy: annotations
+    #   pausePeriod: 2m
+
+    # Example 6: CronJob
+    # - kind: CronJob
+    #   name: backup-job
+    #   rolloutStrategy: restart
+
+    # Example 7: OpenShift DeploymentConfig
+    # - kind: DeploymentConfig
+    #   name: legacy-app
+    #   namespace: openshift-apps

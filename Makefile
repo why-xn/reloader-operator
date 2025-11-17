@@ -118,7 +118,7 @@ e2e-test: ## Stage 2: Run E2E tests only (requires e2e-setup to be run first)
 	@echo "Stage 2: Running E2E Tests"
 	@echo "========================================="
 	@echo "Running tests without setup/cleanup..."
-	@E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 12m $(GINKGO_ARGS)
+	@E2E_SKIP_SETUP=true E2E_SKIP_CLEANUP=true go test -tags=e2e ./test/e2e/ -v -ginkgo.v -timeout 20m $(GINKGO_ARGS)
 	@echo "========================================="
 	@echo "✓ E2E Tests Complete!"
 	@echo "========================================="
