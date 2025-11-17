@@ -43,11 +43,12 @@ import (
 // http://onsi.github.io/ginkgo/ to learn more about Ginkgo.
 
 var (
-	ctx       context.Context
-	cancel    context.CancelFunc
-	testEnv   *envtest.Environment
-	cfg       *rest.Config
-	k8sClient client.Client
+	ctx        context.Context
+	cancel     context.CancelFunc
+	testEnv    *envtest.Environment
+	cfg        *rest.Config
+	k8sClient  client.Client
+	reconciler *ReloaderConfigReconciler
 )
 
 func TestControllers(t *testing.T) {
@@ -94,7 +95,7 @@ var _ = BeforeSuite(func() {
 	Expect(err).NotTo(HaveOccurred())
 
 	By("setting up controller with dependencies")
-	reconciler := &ReloaderConfigReconciler{
+	reconciler = &ReloaderConfigReconciler{
 		Client:          mgr.GetClient(),
 		Scheme:          mgr.GetScheme(),
 		WorkloadFinder:  workload.NewFinder(mgr.GetClient()),
