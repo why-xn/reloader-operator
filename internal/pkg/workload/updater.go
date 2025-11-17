@@ -77,13 +77,13 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceKind
 	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		err = u.reloadDeployment(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
+		err = u.reloadDeployment(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
 
 	case util.KindStatefulSet:
-		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
+		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
 
 	case util.KindDaemonSet:
-		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
+		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
@@ -174,13 +174,13 @@ func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resour
 	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		err = u.reloadDeleteDeployment(ctx, target.Name, target.Namespace, reloadStrategy)
+		err = u.reloadDeleteDeployment(ctx, target.Name, target.Namespace, reloadStrategy, resourceKind, resourceName)
 
 	case util.KindStatefulSet:
-		err = u.reloadDeleteStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy)
+		err = u.reloadDeleteStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy, resourceKind, resourceName)
 
 	case util.KindDaemonSet:
-		err = u.reloadDeleteDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy)
+		err = u.reloadDeleteDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy, resourceKind, resourceName)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
@@ -202,7 +202,7 @@ func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resour
 // reloadDeployment triggers a rolling update of a Deployment
 func (u *Updater) reloadDeployment(
 	ctx context.Context,
-	name, namespace, strategy, reloadSourceJSON string,
+	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -214,7 +214,7 @@ func (u *Updater) reloadDeployment(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, reloadSourceJSON); err != nil {
+	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
 		return err
 	}
 
@@ -233,7 +233,7 @@ func (u *Updater) reloadDeployment(
 // reloadStatefulSet triggers a rolling update of a StatefulSet
 func (u *Updater) reloadStatefulSet(
 	ctx context.Context,
-	name, namespace, strategy, reloadSourceJSON string,
+	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -245,7 +245,7 @@ func (u *Updater) reloadStatefulSet(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, reloadSourceJSON); err != nil {
+	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
 		return err
 	}
 
@@ -264,7 +264,7 @@ func (u *Updater) reloadStatefulSet(
 // reloadDaemonSet triggers a rolling update of a DaemonSet
 func (u *Updater) reloadDaemonSet(
 	ctx context.Context,
-	name, namespace, strategy, reloadSourceJSON string,
+	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -276,7 +276,7 @@ func (u *Updater) reloadDaemonSet(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, reloadSourceJSON); err != nil {
+	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
 		return err
 	}
 
@@ -296,6 +296,7 @@ func (u *Updater) reloadDaemonSet(
 func (u *Updater) reloadDeleteDeployment(
 	ctx context.Context,
 	name, namespace, strategy string,
+	resourceKind, resourceName string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -307,7 +308,7 @@ func (u *Updater) reloadDeleteDeployment(
 	}
 
 	// Apply the delete strategy (remove env var or set empty hash annotation)
-	if err := applyDeleteStrategy(&deployment.Spec.Template, strategy); err != nil {
+	if err := applyDeleteStrategy(&deployment.Spec.Template, strategy, resourceKind, resourceName); err != nil {
 		return err
 	}
 
@@ -327,6 +328,7 @@ func (u *Updater) reloadDeleteDeployment(
 func (u *Updater) reloadDeleteStatefulSet(
 	ctx context.Context,
 	name, namespace, strategy string,
+	resourceKind, resourceName string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -338,7 +340,7 @@ func (u *Updater) reloadDeleteStatefulSet(
 	}
 
 	// Apply the delete strategy
-	if err := applyDeleteStrategy(&statefulSet.Spec.Template, strategy); err != nil {
+	if err := applyDeleteStrategy(&statefulSet.Spec.Template, strategy, resourceKind, resourceName); err != nil {
 		return err
 	}
 
@@ -358,6 +360,7 @@ func (u *Updater) reloadDeleteStatefulSet(
 func (u *Updater) reloadDeleteDaemonSet(
 	ctx context.Context,
 	name, namespace, strategy string,
+	resourceKind, resourceName string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -369,7 +372,7 @@ func (u *Updater) reloadDeleteDaemonSet(
 	}
 
 	// Apply the delete strategy
-	if err := applyDeleteStrategy(&daemonSet.Spec.Template, strategy); err != nil {
+	if err := applyDeleteStrategy(&daemonSet.Spec.Template, strategy, resourceKind, resourceName); err != nil {
 		return err
 	}
 
@@ -386,12 +389,12 @@ func (u *Updater) reloadDeleteDaemonSet(
 }
 
 // applyReloadStrategy applies the chosen reload strategy to a pod template
-func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, reloadSourceJSON string) error {
+func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string) error {
 	timestamp := time.Now().Format(time.RFC3339)
 
 	switch strategy {
 	case util.ReloadStrategyEnvVars:
-		return applyEnvVarsStrategy(template, timestamp, reloadSourceJSON)
+		return applyEnvVarsStrategy(template, resourceKind, resourceName, resourceHash)
 
 	case util.ReloadStrategyAnnotations:
 		return applyAnnotationsStrategy(template, timestamp, reloadSourceJSON)
@@ -401,21 +404,27 @@ func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, reloadSourc
 	}
 }
 
-// applyEnvVarsStrategy updates a dummy environment variable to trigger pod restart
-func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, reloadSourceJSON string) error {
+// applyEnvVarsStrategy updates environment variable based on the changed resource to trigger pod restart
+// This matches the original Reloader's behavior of creating resource-specific env vars
+func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, resourceKind, resourceName, resourceHash string) error {
 	// Ensure we have at least one container
 	if len(template.Spec.Containers) == 0 {
 		return fmt.Errorf("no containers found in pod template")
 	}
 
+	// Generate the environment variable name based on the resource
+	// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
+	// Example: RELOADER_SECRET_DB_CREDENTIALS or RELOADER_CONFIGMAP_APP_CONFIG
+	envVarName := util.GetEnvVarName(resourceKind, resourceName)
+
 	// Update the first container's environment variable
 	container := &template.Spec.Containers[0]
 
-	// Find or add the RELOADER_TRIGGERED_AT env var
+	// Find or add the env var
 	found := false
 	for i, env := range container.Env {
-		if env.Name == util.EnvReloaderTriggeredAt {
-			container.Env[i].Value = timestamp
+		if env.Name == envVarName {
+			container.Env[i].Value = resourceHash
 			found = true
 			break
 		}
@@ -423,8 +432,8 @@ func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, reloadSou
 
 	if !found {
 		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  util.EnvReloaderTriggeredAt,
-			Value: timestamp,
+			Name:  envVarName,
+			Value: resourceHash,
 		})
 	}
 
@@ -448,16 +457,16 @@ func applyAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp, reloa
 //
 // Business Logic:
 // When a Secret/ConfigMap is deleted, we need to trigger a pod restart:
-// - env-vars strategy: SET the RELOADER_TRIGGERED_AT environment variable to a timestamp
+// - env-vars strategy: Update the resource-specific environment variable with a "deleted" marker
 // - annotations strategy: Set the annotation to timestamp (triggers restart via annotation change)
 //
 // Both strategies ensure a rolling restart by making a change to the pod template.
-func applyDeleteStrategy(template *corev1.PodTemplateSpec, strategy string) error {
+func applyDeleteStrategy(template *corev1.PodTemplateSpec, strategy, resourceKind, resourceName string) error {
 	timestamp := time.Now().Format(time.RFC3339)
 
 	switch strategy {
 	case util.ReloadStrategyEnvVars:
-		return applyDeleteEnvVarsStrategy(template, timestamp)
+		return applyDeleteEnvVarsStrategy(template, resourceKind, resourceName, timestamp)
 
 	case util.ReloadStrategyAnnotations:
 		return applyDeleteAnnotationsStrategy(template, timestamp)
@@ -467,23 +476,29 @@ func applyDeleteStrategy(template *corev1.PodTemplateSpec, strategy string) erro
 	}
 }
 
-// applyDeleteEnvVarsStrategy sets the RELOADER_TRIGGERED_AT environment variable to a timestamp
+// applyDeleteEnvVarsStrategy updates the resource-specific environment variable to indicate deletion
 // to trigger a rolling restart when a resource is deleted
-func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp string) error {
+// This matches the original Reloader's behavior of using resource-specific env vars
+func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, resourceKind, resourceName, timestamp string) error {
 	// Ensure we have at least one container
 	if len(template.Spec.Containers) == 0 {
 		return fmt.Errorf("no containers found in pod template")
 	}
 
-	// Set the RELOADER_TRIGGERED_AT env var to trigger a restart
-	// We use a timestamp to ensure the value changes and triggers a rolling update
+	// Generate the environment variable name based on the resource
+	// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
+	// Example: RELOADER_SECRET_DB_CREDENTIALS or RELOADER_CONFIGMAP_APP_CONFIG
+	envVarName := util.GetEnvVarName(resourceKind, resourceName)
+
+	// Set the resource-specific env var to "deleted" marker to trigger a restart
+	// We use "deleted" as the value to distinguish from normal reloads
 	container := &template.Spec.Containers[0]
 
 	// Find and update the env var, or add it if it doesn't exist
 	found := false
 	for i, env := range container.Env {
-		if env.Name == util.EnvReloaderTriggeredAt {
-			container.Env[i].Value = timestamp
+		if env.Name == envVarName {
+			container.Env[i].Value = "deleted-" + timestamp
 			found = true
 			break
 		}
@@ -492,8 +507,8 @@ func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp stri
 	// If not found, add it
 	if !found {
 		container.Env = append(container.Env, corev1.EnvVar{
-			Name:  util.EnvReloaderTriggeredAt,
-			Value: timestamp,
+			Name:  envVarName,
+			Value: "deleted-" + timestamp,
 		})
 	}
 

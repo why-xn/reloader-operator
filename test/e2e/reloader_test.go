@@ -130,15 +130,11 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
-			By("verifying RELOADER_TRIGGERED_AT env var was added")
+			By("verifying resource-specific env var was added")
+			// For Secret "test-secret", the expected env var is RELOADER_SECRET_TEST_SECRET
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
-
-			By("verifying resource hash annotation was added")
-			annotations, err := utils.GetPodTemplateAnnotations(testNS, "deployment", deploymentName)
-			Expect(err).NotTo(HaveOccurred())
-			Expect(annotations).To(HaveKey("reloader.stakater.com/resource-hash"))
+			Expect(envVars).To(HaveKey("RELOADER_SECRET_TEST_SECRET"))
 
 			By("verifying ReloaderConfig status")
 			status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
@@ -236,10 +232,11 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(newUIDs).To(HaveLen(2))
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
-			By("verifying RELOADER_TRIGGERED_AT env var was added")
+			By("verifying resource-specific env var was added")
+			// For ConfigMap "test-configmap", the expected env var is RELOADER_CONFIGMAP_TEST_CONFIGMAP
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
+			Expect(envVars).To(HaveKey("RELOADER_CONFIGMAP_TEST_CONFIGMAP"))
 
 			// Cleanup resources on success
 			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
@@ -332,12 +329,14 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			annotations, err := utils.GetPodTemplateAnnotations(testNS, "statefulset", statefulSetName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(annotations).To(HaveKey("reloader.stakater.com/last-reload"))
-			Expect(annotations).To(HaveKey("reloader.stakater.com/resource-hash"))
+			Expect(annotations).To(HaveKey("reloader.stakater.com/last-reloaded-from"))
 
-			By("verifying RELOADER_TRIGGERED_AT env var was NOT added (annotations strategy)")
+			By("verifying no RELOADER_* env vars were added (annotations strategy)")
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "statefulset", statefulSetName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"))
+			for envName := range envVars {
+				Expect(envName).NotTo(HavePrefix("RELOADER_"), "annotations strategy should not add RELOADER_* env vars")
+			}
 
 			// Cleanup resources on success
 			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
@@ -546,10 +545,12 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
 
-			By("verifying no env var was added to pod template")
+			By("verifying no RELOADER_* env vars were added to pod template")
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "deployment", deploymentName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"), "RELOADER_TRIGGERED_AT should not be added with restart strategy")
+			for envName := range envVars {
+				Expect(envName).NotTo(HavePrefix("RELOADER_"), "No RELOADER_* env vars should be added with restart strategy")
+			}
 
 			// Cleanup resources on success
 			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{

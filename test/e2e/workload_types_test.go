@@ -105,10 +105,11 @@ var _ = Describe("Workload Types", Ordered, func() {
 				return utils.WaitForGenerationChange(testNS, "statefulset", statefulSetName, initialGeneration, 10*time.Second)
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
 
-			By("verifying RELOADER_TRIGGERED_AT env var was added")
+			By("verifying resource-specific env var was added")
+			// For Secret "sts-secret", the expected env var is RELOADER_SECRET_STS_SECRET
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "statefulset", statefulSetName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
+			Expect(envVars).To(HaveKey("RELOADER_SECRET_STS_SECRET"))
 
 			By("verifying ReloaderConfig status")
 			status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
@@ -278,10 +279,11 @@ var _ = Describe("Workload Types", Ordered, func() {
 				return utils.WaitForGenerationChange(testNS, "daemonset", daemonSetName, initialGeneration, 10*time.Second)
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
 
-			By("verifying RELOADER_TRIGGERED_AT env var was added")
+			By("verifying resource-specific env var was added")
+			// For ConfigMap "ds-configmap", the expected env var is RELOADER_CONFIGMAP_DS_CONFIGMAP
 			envVars, err := utils.GetPodTemplateEnvVars(testNS, "daemonset", daemonSetName)
 			Expect(err).NotTo(HaveOccurred())
-			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
+			Expect(envVars).To(HaveKey("RELOADER_CONFIGMAP_DS_CONFIGMAP"))
 
 			By("verifying ReloaderConfig status")
 			status, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)

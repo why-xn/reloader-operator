@@ -45,8 +45,8 @@ const (
 	AnnotationStatefulSetPausePeriod = "statefulset.reloader.stakater.com/pause-period"
 	AnnotationDaemonSetPausePeriod   = "daemonset.reloader.stakater.com/pause-period"
 
-	// Environment variable name for reload trigger
-	EnvReloaderTriggeredAt = "RELOADER_TRIGGERED_AT"
+	// Environment variable prefix for reload triggers
+	EnvVarPrefix = "RELOADER_"
 )
 
 // Resource kinds supported by Reloader
@@ -69,7 +69,7 @@ const (
 
 // Reload strategies (how to modify template when rollout strategy is "rollout")
 const (
-	ReloadStrategyEnvVars     = "env-vars"    // Update RELOADER_TRIGGERED_AT environment variable
+	ReloadStrategyEnvVars     = "env-vars"    // Update environment variable based on resource (e.g., RELOADER_SECRET_DB_CREDENTIALS)
 	ReloadStrategyAnnotations = "annotations" // Update pod template annotations
 )
 
@@ -222,4 +222,36 @@ func ShouldReloadOnDelete(reloadOnDelete bool, annotations map[string]string) bo
 		return true
 	}
 	return false
+}
+
+// ConvertToEnvVarName converts a Kubernetes resource name to a valid environment variable name
+// Examples:
+//   - "db-credentials" -> "DB_CREDENTIALS"
+//   - "app.config" -> "APP_CONFIG"
+//   - "my_secret-123" -> "MY_SECRET_123"
+func ConvertToEnvVarName(name string) string {
+	// Convert to uppercase
+	result := strings.ToUpper(name)
+
+	// Replace invalid characters with underscores
+	// Valid env var characters: A-Z, 0-9, _
+	result = strings.Map(func(r rune) rune {
+		if (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' {
+			return r
+		}
+		return '_'
+	}, result)
+
+	return result
+}
+
+// GetEnvVarName generates the environment variable name for a resource
+// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
+// Examples:
+//   - Secret "db-credentials" -> "RELOADER_SECRET_DB_CREDENTIALS"
+//   - ConfigMap "app-config" -> "RELOADER_CONFIGMAP_APP_CONFIG"
+func GetEnvVarName(resourceKind, resourceName string) string {
+	typeName := strings.ToUpper(resourceKind)
+	envVarName := ConvertToEnvVarName(resourceName)
+	return EnvVarPrefix + typeName + "_" + envVarName
 }

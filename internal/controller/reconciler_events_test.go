@@ -391,7 +391,8 @@ var _ = Describe("Event Handlers", func() {
 				return k8sClient.Update(ctx, cm)
 			}, timeout, interval).Should(Succeed())
 
-			// Verify deployment was reloaded
+			// Verify deployment was reloaded (resource-specific env var added)
+			// For ConfigMap "test-configmap", the expected env var is RELOADER_CONFIGMAP_TEST_CONFIGMAP
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "test-app-cm-reload",
@@ -401,9 +402,10 @@ var _ = Describe("Event Handlers", func() {
 					return false
 				}
 
+				expectedEnvVar := util.GetEnvVarName(util.KindConfigMap, "test-configmap")
 				for _, container := range deployment.Spec.Template.Spec.Containers {
 					for _, env := range container.Env {
-						if env.Name == util.EnvReloaderTriggeredAt {
+						if env.Name == expectedEnvVar {
 							return true
 						}
 					}
