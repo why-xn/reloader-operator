@@ -70,6 +70,10 @@ func main() {
 	var resourceLabelSelector string
 	var namespaceSelector string
 	var namespacesToIgnore string
+	var alertOnReload bool
+	var alertSink string
+	var alertWebhookURL string
+	var alertAdditionalInfo string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -98,6 +102,14 @@ func main() {
 		"Label selector to watch only namespaces with matching labels (e.g., 'environment=production' or 'team in (backend,frontend)')")
 	flag.StringVar(&namespacesToIgnore, "namespaces-to-ignore", "",
 		"Comma-separated list of namespace names to ignore (e.g., 'kube-system,kube-public')")
+	flag.BoolVar(&alertOnReload, "alert-on-reload", false,
+		"Send alerts when workloads are reloaded")
+	flag.StringVar(&alertSink, "alert-sink", "webhook",
+		"Alert sink type: 'slack', 'teams', 'gchat', or 'webhook' (default: webhook)")
+	flag.StringVar(&alertWebhookURL, "alert-webhook-url", "",
+		"Webhook URL for sending reload alerts (required if alert-on-reload is true)")
+	flag.StringVar(&alertAdditionalInfo, "alert-additional-info", "",
+		"Additional information to include in alert messages")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -246,12 +258,18 @@ func main() {
 	}
 
 	// Initialize the controller with workload finder, updater, and alert manager
+	// Validate alert configuration
+	if alertOnReload && alertWebhookURL == "" {
+		setupLog.Error(nil, "alert-webhook-url is required when alert-on-reload is enabled")
+		os.Exit(1)
+	}
+
 	reconciler := &controller.ReloaderConfigReconciler{
 		Client:                mgr.GetClient(),
 		Scheme:                mgr.GetScheme(),
 		WorkloadFinder:        workload.NewFinder(mgr.GetClient()),
 		WorkloadUpdater:       workload.NewUpdater(mgr.GetClient()),
-		AlertManager:          alerts.NewManager(mgr.GetClient()),
+		AlertManager:          alerts.NewAlertManager(mgr.GetClient(), alertOnReload, alertSink, alertWebhookURL, alertAdditionalInfo),
 		ReloadOnCreate:        reloadOnCreate,
 		ReloadOnDelete:        reloadOnDelete,
 		ResourceLabelSelector: resourceSelector,

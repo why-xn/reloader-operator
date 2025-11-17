@@ -100,7 +100,7 @@ var _ = BeforeSuite(func() {
 		Scheme:          mgr.GetScheme(),
 		WorkloadFinder:  workload.NewFinder(mgr.GetClient()),
 		WorkloadUpdater: workload.NewUpdater(mgr.GetClient()),
-		AlertManager:    alerts.NewManager(mgr.GetClient()),
+		AlertManager:    alerts.NewAlertManager(mgr.GetClient(), false, "webhook", "", ""),
 	}
 	err = reconciler.SetupWithManager(mgr)
 	Expect(err).NotTo(HaveOccurred())

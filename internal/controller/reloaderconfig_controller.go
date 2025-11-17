@@ -46,7 +46,7 @@ type ReloaderConfigReconciler struct {
 	Scheme          *runtime.Scheme
 	WorkloadFinder  *workload.Finder
 	WorkloadUpdater *workload.Updater
-	AlertManager    *alerts.Manager
+	AlertManager    *alerts.AlertManager
 	statusQueue     workqueue.TypedRateLimitingInterface[statusUpdateWorkItem]
 	ctx             context.Context
 	cancelFunc      context.CancelFunc

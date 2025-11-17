@@ -52,10 +52,6 @@ type ReloaderConfigSpec struct {
 	// +optional
 	IgnoreResources []ResourceReference `json:"ignoreResources,omitempty"`
 
-	// Alerts configures alerting when reloads occur
-	// +optional
-	Alerts *AlertConfiguration `json:"alerts,omitempty"`
-
 	// MatchLabels enables label-based matching for resources
 	// Resources must have matching labels to trigger reload
 	// +optional
@@ -135,54 +131,6 @@ type ResourceReference struct {
 	Name string `json:"name"`
 
 	// Namespace of the resource
-	// +optional
-	Namespace string `json:"namespace,omitempty"`
-}
-
-// AlertConfiguration defines alerting settings
-type AlertConfiguration struct {
-	// Slack webhook configuration
-	// +optional
-	Slack *WebhookConfig `json:"slack,omitempty"`
-
-	// Microsoft Teams webhook configuration
-	// +optional
-	Teams *WebhookConfig `json:"teams,omitempty"`
-
-	// Google Chat webhook configuration
-	// +optional
-	GoogleChat *WebhookConfig `json:"googleChat,omitempty"`
-
-	// Generic webhook configuration for custom integrations
-	// +optional
-	CustomWebhook *WebhookConfig `json:"customWebhook,omitempty"`
-}
-
-// WebhookConfig defines webhook settings
-type WebhookConfig struct {
-	// URL is the webhook endpoint
-	// +kubebuilder:validation:Required
-	URL string `json:"url"`
-
-	// SecretRef references a Secret containing the webhook URL
-	// Use this instead of URL for sensitive webhooks
-	// The secret should have a key named "url"
-	// +optional
-	SecretRef *SecretReference `json:"secretRef,omitempty"`
-}
-
-// SecretReference identifies a Secret and key
-type SecretReference struct {
-	// Name of the Secret
-	// +kubebuilder:validation:Required
-	Name string `json:"name"`
-
-	// Key in the Secret
-	// +kubebuilder:default=url
-	// +optional
-	Key string `json:"key,omitempty"`
-
-	// Namespace of the Secret (defaults to ReloaderConfig's namespace)
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 }

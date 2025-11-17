@@ -145,22 +145,20 @@ func (r *ReloaderConfigReconciler) handleReloadError(
 ) {
 	logger := log.FromContext(ctx)
 
-	// Send error alerts if alerting is configured for this target
-	if target.Config != nil && target.Config.Spec.Alerts != nil {
-		message := alerts.NewReloadErrorMessage(
-			target.Kind,
-			target.Name,
-			target.Namespace,
-			resourceKind,
-			resourceName,
-			target.ReloadStrategy,
-			reloadErr.Error(),
-		)
-		message.Timestamp = time.Now()
+	// Send error alerts if alerting is globally enabled
+	message := alerts.NewReloadErrorMessage(
+		target.Kind,
+		target.Name,
+		target.Namespace,
+		resourceKind,
+		resourceName,
+		target.ReloadStrategy,
+		reloadErr.Error(),
+	)
+	message.Timestamp = time.Now()
 
-		if alertErr := r.AlertManager.SendReloadAlert(ctx, target.Config, message); alertErr != nil {
-			logger.Error(alertErr, "Failed to send error alerts", "workload", target.Name)
-		}
+	if alertErr := r.AlertManager.SendReloadAlert(ctx, message); alertErr != nil {
+		logger.Error(alertErr, "Failed to send error alerts", "workload", target.Name)
 	}
 
 	// Update target status with error message
@@ -185,21 +183,19 @@ func (r *ReloaderConfigReconciler) handleReloadSuccess(
 ) {
 	logger := log.FromContext(ctx)
 
-	// Send success alerts if alerting is configured for this target
-	if target.Config != nil && target.Config.Spec.Alerts != nil {
-		message := alerts.NewReloadSuccessMessage(
-			target.Kind,
-			target.Name,
-			target.Namespace,
-			resourceKind,
-			resourceName,
-			target.ReloadStrategy,
-		)
-		message.Timestamp = time.Now()
+	// Send success alerts if alerting is globally enabled
+	message := alerts.NewReloadSuccessMessage(
+		target.Kind,
+		target.Name,
+		target.Namespace,
+		resourceKind,
+		resourceName,
+		target.ReloadStrategy,
+	)
+	message.Timestamp = time.Now()
 
-		if err := r.AlertManager.SendReloadAlert(ctx, target.Config, message); err != nil {
-			logger.Error(err, "Failed to send success alerts", "workload", target.Name)
-		}
+	if err := r.AlertManager.SendReloadAlert(ctx, message); err != nil {
+		logger.Error(err, "Failed to send success alerts", "workload", target.Name)
 	}
 
 	// Update target status (clears any previous error)
