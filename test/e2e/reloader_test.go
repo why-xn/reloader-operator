@@ -33,12 +33,12 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("CRD-based Configuration", func() {
@@ -48,13 +48,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			reloaderConfigName := "test-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment that uses the Secret")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -77,9 +77,9 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -99,7 +99,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -149,7 +149,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(status.TargetStatus[0].Kind).To(Equal("Deployment"))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -162,13 +162,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			reloaderConfigName := "test-config-cm"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment that uses the ConfigMap")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				ConfigMapKey:  "config",
@@ -187,9 +187,9 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedConfigMaps: []string{configMapName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -209,7 +209,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -240,7 +240,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(envVars).To(HaveKey("RELOADER_TRIGGERED_AT"))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"configmap":      {configMapName},
 				"reloaderconfig": {reloaderConfigName},
@@ -253,13 +253,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			reloaderConfigName := "test-config-sts"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a StatefulSet that uses the ConfigMap")
-			statefulSetYAML := GenerateStatefulSet(statefulSetName, testNS, StatefulSetOpts{
+			statefulSetYAML := utils.GenerateStatefulSet(statefulSetName, testNS, utils.StatefulSetOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				ConfigMapKey:  "config",
@@ -278,9 +278,9 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("creating a ReloaderConfig with annotations strategy")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedConfigMaps: []string{configMapName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "StatefulSet",
 						Name: statefulSetName,
@@ -300,7 +300,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -337,7 +337,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"statefulset":    {statefulSetName},
 				"configmap":      {configMapName},
 				"reloaderconfig": {reloaderConfigName},
@@ -351,20 +351,20 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			reloaderConfigName := "test-config-multi"
 
 			By("creating a shared Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "shared-initial",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating first Deployment using the Secret")
-			deployment1YAML := GenerateDeployment(deployment1Name, testNS, DeploymentOpts{
+			deployment1YAML := utils.GenerateDeployment(deployment1Name, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 			})
 			Expect(utils.ApplyYAML(deployment1YAML)).To(Succeed())
 
 			By("creating second Deployment using the Secret")
-			deployment2YAML := GenerateDeployment(deployment2Name, testNS, DeploymentOpts{
+			deployment2YAML := utils.GenerateDeployment(deployment2Name, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 			})
@@ -388,9 +388,9 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(initialUIDs2).To(HaveLen(1))
 
 			By("creating a ReloaderConfig targeting both deployments")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{Kind: "Deployment", Name: deployment1Name},
 					{Kind: "Deployment", Name: deployment2Name},
 				},
@@ -407,7 +407,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the shared Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "shared-updated",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -444,7 +444,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(status.TargetStatus).To(HaveLen(2))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deployment1Name, deployment2Name},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -457,13 +457,13 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			reloaderConfigName := "restart-strategy-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment that uses the Secret")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -486,9 +486,9 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating a ReloaderConfig with restart strategy")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -508,7 +508,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -549,7 +549,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 			Expect(envVars).NotTo(HaveKey("RELOADER_TRIGGERED_AT"), "RELOADER_TRIGGERED_AT should not be added with restart strategy")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},

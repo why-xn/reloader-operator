@@ -34,12 +34,12 @@ var _ = Describe("Targeted Reload (CRD)", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("CRD-based Targeted Reload", func() {
@@ -52,19 +52,19 @@ var _ = Describe("Targeted Reload (CRD)", Ordered, func() {
 			reloaderConfigName := "targeted-reload-config"
 
 			By("creating Secret A")
-			secretAYAML := GenerateSecret(secretA, testNS, map[string]string{
+			secretAYAML := utils.GenerateSecret(secretA, testNS, map[string]string{
 				"password": "initial-value-a",
 			})
 			Expect(utils.ApplyYAML(secretAYAML)).To(Succeed())
 
 			By("creating Secret B")
-			secretBYAML := GenerateSecret(secretB, testNS, map[string]string{
+			secretBYAML := utils.GenerateSecret(secretB, testNS, map[string]string{
 				"password": "initial-value-b",
 			})
 			Expect(utils.ApplyYAML(secretBYAML)).To(Succeed())
 
 			By("creating Deployment that uses Secret A only")
-			appADeployment := GenerateDeployment(appWithSecretA, testNS, DeploymentOpts{
+			appADeployment := utils.GenerateDeployment(appWithSecretA, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretA,
 				SecretKey:  "password",
@@ -73,7 +73,7 @@ var _ = Describe("Targeted Reload (CRD)", Ordered, func() {
 			Expect(utils.ApplyYAML(appADeployment)).To(Succeed())
 
 			By("creating Deployment that uses Secret B only")
-			appBDeployment := GenerateDeployment(appWithSecretB, testNS, DeploymentOpts{
+			appBDeployment := utils.GenerateDeployment(appWithSecretB, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretB,
 				SecretKey:  "password",
@@ -135,23 +135,23 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating ReloaderConfig with targeted reload enabled")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets:       []string{secretA, secretB},
 				EnableTargetedReload: true,
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
-						Kind:         "Deployment",
-						Name:         appWithSecretA,
+						Kind:             "Deployment",
+						Name:             appWithSecretA,
 						RequireReference: true,
 					},
 					{
-						Kind:         "Deployment",
-						Name:         appWithSecretB,
+						Kind:             "Deployment",
+						Name:             appWithSecretB,
 						RequireReference: true,
 					},
 					{
-						Kind:         "Deployment",
-						Name:         appWithBothSecrets,
+						Kind:             "Deployment",
+						Name:             appWithBothSecrets,
 						RequireReference: true,
 					},
 				},
@@ -169,7 +169,7 @@ spec:
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating Secret A (should only trigger reload for app-with-secret-a and app-with-both-secrets)")
-			updatedSecretA := GenerateSecret(secretA, testNS, map[string]string{
+			updatedSecretA := utils.GenerateSecret(secretA, testNS, map[string]string{
 				"password": "updated-value-a",
 			})
 			Expect(utils.ApplyYAML(updatedSecretA)).To(Succeed())
@@ -201,7 +201,7 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			By("updating Secret B (should only trigger reload for app-with-secret-b and app-with-both-secrets)")
-			updatedSecretB := GenerateSecret(secretB, testNS, map[string]string{
+			updatedSecretB := utils.GenerateSecret(secretB, testNS, map[string]string{
 				"password": "updated-value-b",
 			})
 			Expect(utils.ApplyYAML(updatedSecretB)).To(Succeed())
@@ -225,7 +225,7 @@ spec:
 			Expect(currentGenA).To(Equal(initialGenA), "app-with-secret-a should not have been reloaded")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {appWithSecretA, appWithSecretB, appWithBothSecrets},
 				"secret":         {secretA, secretB},
 				"reloaderconfig": {reloaderConfigName},
@@ -240,19 +240,19 @@ spec:
 			reloaderConfigName := "no-search-config"
 
 			By("creating Secret A")
-			secretAYAML := GenerateSecret(secretA, testNS, map[string]string{
+			secretAYAML := utils.GenerateSecret(secretA, testNS, map[string]string{
 				"password": "initial-value-a",
 			})
 			Expect(utils.ApplyYAML(secretAYAML)).To(Succeed())
 
 			By("creating Secret B")
-			secretBYAML := GenerateSecret(secretB, testNS, map[string]string{
+			secretBYAML := utils.GenerateSecret(secretB, testNS, map[string]string{
 				"password": "initial-value-b",
 			})
 			Expect(utils.ApplyYAML(secretBYAML)).To(Succeed())
 
 			By("creating Deployment that uses Secret A")
-			appADeployment := GenerateDeployment(appWithSecretA, testNS, DeploymentOpts{
+			appADeployment := utils.GenerateDeployment(appWithSecretA, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretA,
 				SecretKey:  "password",
@@ -261,7 +261,7 @@ spec:
 			Expect(utils.ApplyYAML(appADeployment)).To(Succeed())
 
 			By("creating Deployment that uses Secret B")
-			appBDeployment := GenerateDeployment(appWithSecretB, testNS, DeploymentOpts{
+			appBDeployment := utils.GenerateDeployment(appWithSecretB, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretB,
 				SecretKey:  "password",
@@ -284,18 +284,18 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating ReloaderConfig with targeted reload enabled but enableSearch false on targets")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets:       []string{secretA, secretB},
 				EnableTargetedReload: true,
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
-						Kind:         "Deployment",
-						Name:         appWithSecretA,
+						Kind:             "Deployment",
+						Name:             appWithSecretA,
 						RequireReference: false, // No search - should reload for ANY watched secret
 					},
 					{
-						Kind:         "Deployment",
-						Name:         appWithSecretB,
+						Kind:             "Deployment",
+						Name:             appWithSecretB,
 						RequireReference: false, // No search - should reload for ANY watched secret
 					},
 				},
@@ -313,7 +313,7 @@ spec:
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating Secret A")
-			updatedSecretA := GenerateSecret(secretA, testNS, map[string]string{
+			updatedSecretA := utils.GenerateSecret(secretA, testNS, map[string]string{
 				"password": "updated-value-a",
 			})
 			Expect(utils.ApplyYAML(updatedSecretA)).To(Succeed())
@@ -331,7 +331,7 @@ spec:
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {appWithSecretA, appWithSecretB},
 				"secret":         {secretA, secretB},
 				"reloaderconfig": {reloaderConfigName},

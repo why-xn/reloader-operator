@@ -179,11 +179,11 @@ stringData:
 				"Pods in non-matching namespace should NOT be reloaded")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(matchingNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(matchingNamespace, map[string][]string{
 				"deployment": {deploymentNameMatching},
 				"secret":     {secretName},
 			})
-			CleanupResourcesOnSuccess(nonMatchingNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(nonMatchingNamespace, map[string][]string{
 				"deployment": {deploymentNameNonMatching},
 				"secret":     {secretName},
 			})
@@ -356,11 +356,11 @@ stringData:
 			}, 2*time.Minute, 5*time.Second).Should(BeTrue(), "Deployment in watched namespace should reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(ignoredNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(ignoredNamespace, map[string][]string{
 				"deployment": {deploymentNameIgnored},
 				"secret":     {secretName},
 			})
-			CleanupResourcesOnSuccess(matchingNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(matchingNamespace, map[string][]string{
 				"deployment": {deploymentNameWatched},
 				"secret":     {secretName},
 			})

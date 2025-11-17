@@ -33,12 +33,12 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("Error Handling", func() {
@@ -48,15 +48,15 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			reloaderConfigName := "orphan-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a ReloaderConfig targeting non-existent Deployment")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -80,7 +80,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			Expect(status.ReloadCount).To(Equal(int64(0)))
 
 			By("creating the missing Deployment")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 			})
@@ -92,7 +92,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("updating the Secret to trigger reload")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -107,7 +107,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 1*time.Minute, 2*time.Second).Should(BeTrue())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -120,15 +120,15 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			reloaderConfigName := "waiting-config"
 
 			By("creating a Deployment first")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas: 2,
 			})
 			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
 
 			By("creating a ReloaderConfig watching non-existent Secret")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -144,7 +144,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
 
 			By("creating the missing Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "now-exists",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
@@ -159,7 +159,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -172,22 +172,22 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			reloaderConfigName := "resilient-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 			})
 			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -212,7 +212,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			time.Sleep(10 * time.Second)
 
 			By("recreating the Secret")
-			newSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			newSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "recreated-value",
 			})
 			Expect(utils.ApplyYAML(newSecretYAML)).To(Succeed())
@@ -227,7 +227,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -240,13 +240,13 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			reloaderConfigName := "pause-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 			})
@@ -258,9 +258,9 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating a ReloaderConfig with pause period")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind:        "Deployment",
 						Name:        deploymentName,
@@ -280,7 +280,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("triggering first reload")
-			updatedSecretYAML1 := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML1 := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "first-update",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML1)).To(Succeed())
@@ -292,20 +292,20 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 					return false
 				}
 				// Check per-target reload count (more reliable than top-level count)
-			if len(status.TargetStatus) == 0 {
-				return false
-			}
-			return status.TargetStatus[0].ReloadCount == 1
+				if len(status.TargetStatus) == 0 {
+					return false
+				}
+				return status.TargetStatus[0].ReloadCount == 1
 			}, 1*time.Minute, 2*time.Second).Should(BeTrue())
 
 			By("capturing reload count after first reload")
 			firstStatus, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(firstStatus.TargetStatus)).To(BeNumerically(">", 0))
-		firstReloadCount := firstStatus.TargetStatus[0].ReloadCount
+			firstReloadCount := firstStatus.TargetStatus[0].ReloadCount
 
 			By("immediately triggering second reload (should be skipped)")
-			updatedSecretYAML2 := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML2 := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "second-update-immediate",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML2)).To(Succeed())
@@ -317,10 +317,10 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			secondStatus, err := utils.GetReloaderConfigStatus(testNS, reloaderConfigName)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(len(secondStatus.TargetStatus)).To(BeNumerically(">", 0))
-		Expect(secondStatus.TargetStatus[0].ReloadCount).To(Equal(firstReloadCount), "Reload count should not increase during pause period")
+			Expect(secondStatus.TargetStatus[0].ReloadCount).To(Equal(firstReloadCount), "Reload count should not increase during pause period")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -335,20 +335,20 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			config2Name := "config-2"
 
 			By("creating a shared Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating first Deployment")
-			deployment1YAML := GenerateDeployment(deployment1Name, testNS, DeploymentOpts{
+			deployment1YAML := utils.GenerateDeployment(deployment1Name, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 			})
 			Expect(utils.ApplyYAML(deployment1YAML)).To(Succeed())
 
 			By("creating second Deployment")
-			deployment2YAML := GenerateDeployment(deployment2Name, testNS, DeploymentOpts{
+			deployment2YAML := utils.GenerateDeployment(deployment2Name, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 			})
@@ -363,18 +363,18 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating first ReloaderConfig")
-			config1YAML := GenerateReloaderConfig(config1Name, testNS, ReloaderConfigSpec{
+			config1YAML := utils.GenerateReloaderConfig(config1Name, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{Kind: "Deployment", Name: deployment1Name},
 				},
 			})
 			Expect(utils.ApplyYAML(config1YAML)).To(Succeed())
 
 			By("creating second ReloaderConfig")
-			config2YAML := GenerateReloaderConfig(config2Name, testNS, ReloaderConfigSpec{
+			config2YAML := utils.GenerateReloaderConfig(config2Name, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{Kind: "Deployment", Name: deployment2Name},
 				},
 			})
@@ -387,7 +387,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("updating the shared Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -417,7 +417,7 @@ var _ = Describe("Edge Cases and Error Handling", Ordered, func() {
 			Expect(newUIDs2).NotTo(Equal(initialUIDs2))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deployment1Name, deployment2Name},
 				"secret":         {secretName},
 				"reloaderconfig": {config1Name, config2Name},

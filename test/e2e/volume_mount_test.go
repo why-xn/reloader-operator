@@ -33,12 +33,12 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("Secret as Volume", func() {
@@ -48,13 +48,13 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			reloaderConfigName := "secret-volume-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"config.json": `{"version": "1.0"}`,
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment with Secret mounted as volume")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:    2,
 				SecretName:  secretName,
 				VolumeMount: true,
@@ -67,9 +67,9 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -84,7 +84,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(len(initialUIDs)).To(Equal(2))
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"config.json": `{"version": "2.0"}`,
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -110,7 +110,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -125,13 +125,13 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			reloaderConfigName := "configmap-volume-config"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"app.conf": "server_name=localhost",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with ConfigMap mounted as volume")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				VolumeMount:   true,
@@ -144,9 +144,9 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedConfigMaps: []string{configMapName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -161,7 +161,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(len(initialUIDs)).To(Equal(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"app.conf": "server_name=example.com",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -187,7 +187,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"configmap":      {configMapName},
 				"reloaderconfig": {reloaderConfigName},
@@ -199,13 +199,13 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			deploymentName := "configmap-volume-annotation-app"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"nginx.conf": "worker_processes 1;",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with auto reload annotation and ConfigMap volume")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				VolumeMount:   true,
@@ -226,7 +226,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(len(initialUIDs)).To(Equal(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"nginx.conf": "worker_processes 4;",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -243,7 +243,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})
@@ -258,19 +258,19 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			reloaderConfigName := "mixed-volume-config"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "secret123",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"settings": "mode=production",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with both Secret and ConfigMap volumes")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				SecretName:    secretName,
 				ConfigMapName: configMapName,
@@ -284,10 +284,10 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating a ReloaderConfig")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets:    []string{secretName},
 				WatchedConfigMaps: []string{configMapName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "Deployment",
 						Name: deploymentName,
@@ -302,7 +302,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(len(initialUIDs)).To(Equal(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"settings": "mode=staging",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -318,7 +318,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(secondUIDs).NotTo(Equal(initialUIDs))
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "newsecret456",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -339,7 +339,7 @@ var _ = Describe("Volume Mount Scenarios", Ordered, func() {
 			Expect(status.ReloadCount).To(BeNumerically(">=", 2))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretName},
 				"configmap":      {configMapName},

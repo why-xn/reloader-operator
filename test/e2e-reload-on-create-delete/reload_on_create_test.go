@@ -106,7 +106,7 @@ stringData:
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 			})
@@ -208,7 +208,7 @@ data:
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"configmap":      {configMapName},
 				"reloaderconfig": {reloaderConfigName},

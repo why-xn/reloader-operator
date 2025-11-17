@@ -11,7 +11,6 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
-	"github.com/stakater/Reloader/test/utils"
 )
 
 var (
@@ -103,15 +102,4 @@ func containsHelper(s, substr string) bool {
 		}
 	}
 	return false
-}
-
-// CleanupResourcesOnSuccess cleans up resources after successful test
-func CleanupResourcesOnSuccess(namespace string, resources map[string][]string) {
-	for resourceType, names := range resources {
-		for _, name := range names {
-			cmd := exec.Command("kubectl", "delete", resourceType, name,
-				"-n", namespace, "--ignore-not-found=true", "--wait=false")
-			_, _ = utils.Run(cmd)
-		}
-	}
 }

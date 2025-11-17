@@ -33,12 +33,12 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("Legacy Annotation Support", func() {
@@ -47,13 +47,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "annotated-app"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment with secret reload annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				Annotations: map[string]string{
@@ -73,7 +73,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -90,7 +90,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 			})
@@ -101,13 +101,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "annotated-app-cm"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with configmap reload annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				Annotations: map[string]string{
@@ -127,7 +127,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -144,7 +144,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})
@@ -155,13 +155,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "auto-app"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment with auto annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				Annotations: map[string]string{
@@ -181,7 +181,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -198,7 +198,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after auto-reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 			})
@@ -209,13 +209,13 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "ignored-app"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment with ignore annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				Annotations: map[string]string{
@@ -239,7 +239,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -258,7 +258,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same for ignored workload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 			})
@@ -270,19 +270,19 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "multi-secret-app"
 
 			By("creating first Secret")
-			secret1YAML := GenerateSecret(secret1Name, testNS, map[string]string{
+			secret1YAML := utils.GenerateSecret(secret1Name, testNS, map[string]string{
 				"password": "secret1-initial",
 			})
 			Expect(utils.ApplyYAML(secret1YAML)).To(Succeed())
 
 			By("creating second Secret")
-			secret2YAML := GenerateSecret(secret2Name, testNS, map[string]string{
+			secret2YAML := utils.GenerateSecret(secret2Name, testNS, map[string]string{
 				"token": "secret2-initial",
 			})
 			Expect(utils.ApplyYAML(secret2YAML)).To(Succeed())
 
 			By("creating a Deployment with multiple secrets in annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secret1Name,
 				Annotations: map[string]string{
@@ -302,7 +302,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the second Secret (not the one in env)")
-			updatedSecret2YAML := GenerateSecret(secret2Name, testNS, map[string]string{
+			updatedSecret2YAML := utils.GenerateSecret(secret2Name, testNS, map[string]string{
 				"token": "secret2-updated",
 			})
 			Expect(utils.ApplyYAML(updatedSecret2YAML)).To(Succeed())
@@ -319,7 +319,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secret1Name, secret2Name},
 			})
@@ -331,19 +331,19 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "test-secret-auto"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-secret",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-config",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with secret-only auto annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				SecretName:    secretName,
 				ConfigMapName: configMapName,
@@ -364,7 +364,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap (should NOT trigger reload)")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-config",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -378,7 +378,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when ConfigMap changes")
 
 			By("updating the Secret (should trigger reload)")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-secret",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -395,7 +395,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after Secret update")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 				"configmap":  {configMapName},
@@ -408,19 +408,19 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "test-configmap-auto"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-secret",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-config",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with configmap-only auto annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				SecretName:    secretName,
 				ConfigMapName: configMapName,
@@ -441,7 +441,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the Secret (should NOT trigger reload)")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-secret",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -455,7 +455,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when Secret changes")
 
 			By("updating the ConfigMap (should trigger reload)")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-config",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -472,7 +472,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after ConfigMap update")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 				"configmap":  {configMapName},
@@ -485,19 +485,19 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "test-named-secret"
 
 			By("creating named Secret")
-			namedSecretYAML := GenerateSecret(namedSecretName, testNS, map[string]string{
+			namedSecretYAML := utils.GenerateSecret(namedSecretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(namedSecretYAML)).To(Succeed())
 
 			By("creating other Secret")
-			otherSecretYAML := GenerateSecret(otherSecretName, testNS, map[string]string{
+			otherSecretYAML := utils.GenerateSecret(otherSecretName, testNS, map[string]string{
 				"password": "other-value",
 			})
 			Expect(utils.ApplyYAML(otherSecretYAML)).To(Succeed())
 
 			By("creating a Deployment that references both Secrets but only watches one")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: namedSecretName,
 				Annotations: map[string]string{
@@ -525,7 +525,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the other Secret (not in reload list)")
-			updatedOtherSecretYAML := GenerateSecret(otherSecretName, testNS, map[string]string{
+			updatedOtherSecretYAML := utils.GenerateSecret(otherSecretName, testNS, map[string]string{
 				"password": "updated-other",
 			})
 			Expect(utils.ApplyYAML(updatedOtherSecretYAML)).To(Succeed())
@@ -539,7 +539,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when non-watched Secret changes")
 
 			By("updating the named Secret (in reload list)")
-			updatedNamedSecretYAML := GenerateSecret(namedSecretName, testNS, map[string]string{
+			updatedNamedSecretYAML := utils.GenerateSecret(namedSecretName, testNS, map[string]string{
 				"password": "updated-named",
 			})
 			Expect(utils.ApplyYAML(updatedNamedSecretYAML)).To(Succeed())
@@ -556,7 +556,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after watched Secret update")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {namedSecretName, otherSecretName},
 			})
@@ -568,19 +568,19 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "test-named-config"
 
 			By("creating named ConfigMap")
-			namedConfigMapYAML := GenerateConfigMap(namedConfigMapName, testNS, map[string]string{
+			namedConfigMapYAML := utils.GenerateConfigMap(namedConfigMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(namedConfigMapYAML)).To(Succeed())
 
 			By("creating other ConfigMap")
-			otherConfigMapYAML := GenerateConfigMap(otherConfigMapName, testNS, map[string]string{
+			otherConfigMapYAML := utils.GenerateConfigMap(otherConfigMapName, testNS, map[string]string{
 				"config": "other-value",
 			})
 			Expect(utils.ApplyYAML(otherConfigMapYAML)).To(Succeed())
 
 			By("creating a Deployment that references both ConfigMaps but only watches one")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: namedConfigMapName,
 				Annotations: map[string]string{
@@ -608,7 +608,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the other ConfigMap (not in reload list)")
-			updatedOtherConfigMapYAML := GenerateConfigMap(otherConfigMapName, testNS, map[string]string{
+			updatedOtherConfigMapYAML := utils.GenerateConfigMap(otherConfigMapName, testNS, map[string]string{
 				"config": "updated-other",
 			})
 			Expect(utils.ApplyYAML(updatedOtherConfigMapYAML)).To(Succeed())
@@ -622,7 +622,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when non-watched ConfigMap changes")
 
 			By("updating the named ConfigMap (in reload list)")
-			updatedNamedConfigMapYAML := GenerateConfigMap(namedConfigMapName, testNS, map[string]string{
+			updatedNamedConfigMapYAML := utils.GenerateConfigMap(namedConfigMapName, testNS, map[string]string{
 				"config": "updated-named",
 			})
 			Expect(utils.ApplyYAML(updatedNamedConfigMapYAML)).To(Succeed())
@@ -639,7 +639,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after watched ConfigMap update")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {namedConfigMapName, otherConfigMapName},
 			})
@@ -650,7 +650,7 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			deploymentName := "test-external-secret"
 
 			By("creating an external Secret not referenced in pod spec")
-			externalSecretYAML := GenerateSecret(externalSecretName, testNS, map[string]string{
+			externalSecretYAML := utils.GenerateSecret(externalSecretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(externalSecretYAML)).To(Succeed())
@@ -695,7 +695,7 @@ spec:
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the external Secret (not referenced in pod spec)")
-			updatedExternalSecretYAML := GenerateSecret(externalSecretName, testNS, map[string]string{
+			updatedExternalSecretYAML := utils.GenerateSecret(externalSecretName, testNS, map[string]string{
 				"password": "updated-external",
 			})
 			Expect(utils.ApplyYAML(updatedExternalSecretYAML)).To(Succeed())
@@ -712,7 +712,7 @@ spec:
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different even for non-referenced Secret")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {externalSecretName},
 			})
@@ -723,17 +723,17 @@ spec:
 			deploymentName := "restart-strategy-app"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a Deployment with restart strategy annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				Annotations: map[string]string{
-					"secret.reloader.stakater.com/reload":     secretName,
+					"secret.reloader.stakater.com/reload":    secretName,
 					"reloader.stakater.com/rollout-strategy": "restart",
 				},
 			})
@@ -754,7 +754,7 @@ spec:
 			Expect(err).NotTo(HaveOccurred())
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -781,7 +781,7 @@ spec:
 			Expect(currentGeneration).To(Equal(initialGeneration), "Deployment generation should not change with restart strategy")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {secretName},
 			})
@@ -794,15 +794,15 @@ spec:
 			deploymentName := "search-enabled-app"
 
 			By("creating a ConfigMap with match annotation")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			// Add match annotation manually
-			configMapYAML = AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
+			configMapYAML = utils.AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with search annotation that references the ConfigMap")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				Annotations: map[string]string{
@@ -822,10 +822,10 @@ spec:
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
-			updatedConfigMapYAML = AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
+			updatedConfigMapYAML = utils.AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
 
 			By("waiting for pods to be recreated")
@@ -844,7 +844,7 @@ spec:
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after targeted reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})
@@ -855,13 +855,13 @@ spec:
 			deploymentName := "search-no-match-app"
 
 			By("creating a ConfigMap WITHOUT match annotation")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with search annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				Annotations: map[string]string{
@@ -881,7 +881,7 @@ spec:
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -901,7 +901,7 @@ spec:
 			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when match annotation is missing")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})
@@ -912,13 +912,13 @@ spec:
 			deploymentName := "auto-over-search-app"
 
 			By("creating a ConfigMap WITHOUT match annotation")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment with both auto and search annotations")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				Annotations: map[string]string{
@@ -939,7 +939,7 @@ spec:
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -960,7 +960,7 @@ spec:
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Auto annotation should trigger reload regardless of match")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})
@@ -971,14 +971,14 @@ spec:
 			deploymentName := "no-search-app"
 
 			By("creating a ConfigMap with match annotation")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
-			configMapYAML = AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
+			configMapYAML = utils.AddAnnotation(configMapYAML, "reloader.stakater.com/match", "true")
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a Deployment WITHOUT search annotation")
-			deploymentYAML := GenerateDeployment(deploymentName, testNS, DeploymentOpts{
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
 				Replicas:      2,
 				ConfigMapName: configMapName,
 				// No annotations
@@ -996,10 +996,10 @@ spec:
 			Expect(initialUIDs).To(HaveLen(2))
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
-			updatedConfigMapYAML = AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
+			updatedConfigMapYAML = utils.AddAnnotation(updatedConfigMapYAML, "reloader.stakater.com/match", "true")
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
 
 			By("waiting to ensure pods are NOT recreated")
@@ -1017,7 +1017,7 @@ spec:
 			Expect(currentUIDs).To(Equal(initialUIDs), "Workload without search annotation should not reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 				"configmap":  {configMapName},
 			})

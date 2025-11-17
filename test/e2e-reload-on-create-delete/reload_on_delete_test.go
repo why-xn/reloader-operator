@@ -133,7 +133,7 @@ stringData:
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment": {deploymentName},
 			})
 		})
@@ -259,7 +259,7 @@ data:
 			}, 2*time.Minute, 5*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"statefulset":    {statefulSetName},
 				"reloaderconfig": {reloaderConfigName},
 			})

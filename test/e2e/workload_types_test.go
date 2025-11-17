@@ -33,12 +33,12 @@ var _ = Describe("Workload Types", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("StatefulSet", func() {
@@ -48,13 +48,13 @@ var _ = Describe("Workload Types", Ordered, func() {
 			reloaderConfigName := "sts-config-envvars"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a StatefulSet that uses the Secret")
-			statefulSetYAML := GenerateStatefulSet(statefulSetName, testNS, StatefulSetOpts{
+			statefulSetYAML := utils.GenerateStatefulSet(statefulSetName, testNS, utils.StatefulSetOpts{
 				Replicas:   2,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -72,9 +72,9 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating a ReloaderConfig with env-vars strategy")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "StatefulSet",
 						Name: statefulSetName,
@@ -94,7 +94,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -115,7 +115,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(status.ReloadCount).To(Equal(int64(1)))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"statefulset":    {statefulSetName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -128,13 +128,13 @@ var _ = Describe("Workload Types", Ordered, func() {
 			reloaderConfigName := "sts-config-pause"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a StatefulSet")
-			statefulSetYAML := GenerateStatefulSet(statefulSetName, testNS, StatefulSetOpts{
+			statefulSetYAML := utils.GenerateStatefulSet(statefulSetName, testNS, utils.StatefulSetOpts{
 				Replicas:   1,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -148,9 +148,9 @@ var _ = Describe("Workload Types", Ordered, func() {
 			}, 3*time.Minute, 5*time.Second).Should(Succeed())
 
 			By("creating ReloaderConfig with pause period")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedSecrets: []string{secretName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind:        "StatefulSet",
 						Name:        statefulSetName,
@@ -171,7 +171,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating Secret first time")
-			updatedSecret1 := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecret1 := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value-1",
 			})
 			Expect(utils.ApplyYAML(updatedSecret1)).To(Succeed())
@@ -191,7 +191,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 
 			By("updating Secret second time (within pause period)")
 			time.Sleep(2 * time.Second)
-			updatedSecret2 := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecret2 := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value-2",
 			})
 			Expect(utils.ApplyYAML(updatedSecret2)).To(Succeed())
@@ -205,7 +205,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(generation2).To(Equal(generation1), "Generation should not change during pause period")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"statefulset":    {statefulSetName},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfigName},
@@ -220,13 +220,13 @@ var _ = Describe("Workload Types", Ordered, func() {
 			reloaderConfigName := "ds-config-envvars"
 
 			By("creating a ConfigMap")
-			configMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			configMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "initial-value",
 			})
 			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
 
 			By("creating a DaemonSet that uses the ConfigMap")
-			daemonSetYAML := GenerateDaemonSet(daemonSetName, testNS, DaemonSetOpts{
+			daemonSetYAML := utils.GenerateDaemonSet(daemonSetName, testNS, utils.DaemonSetOpts{
 				ConfigMapName: configMapName,
 				ConfigMapKey:  "config",
 				EnvVarName:    "CONFIG",
@@ -243,9 +243,9 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(err).NotTo(HaveOccurred())
 
 			By("creating a ReloaderConfig with env-vars strategy")
-			reloaderConfigYAML := GenerateReloaderConfig(reloaderConfigName, testNS, ReloaderConfigSpec{
+			reloaderConfigYAML := utils.GenerateReloaderConfig(reloaderConfigName, testNS, utils.ReloaderConfigSpec{
 				WatchedConfigMaps: []string{configMapName},
-				Targets: []Target{
+				Targets: []utils.Target{
 					{
 						Kind: "DaemonSet",
 						Name: daemonSetName,
@@ -265,7 +265,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the ConfigMap")
-			updatedConfigMapYAML := GenerateConfigMap(configMapName, testNS, map[string]string{
+			updatedConfigMapYAML := utils.GenerateConfigMap(configMapName, testNS, map[string]string{
 				"config": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
@@ -286,7 +286,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(status.ReloadCount).To(Equal(int64(1)))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"daemonset":      {daemonSetName},
 				"configmap":      {configMapName},
 				"reloaderconfig": {reloaderConfigName},
@@ -298,13 +298,13 @@ var _ = Describe("Workload Types", Ordered, func() {
 			daemonSetName := "test-ds-annotation"
 
 			By("creating a Secret")
-			secretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			secretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value",
 			})
 			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
 
 			By("creating a DaemonSet with auto annotation")
-			daemonSetYAML := GenerateDaemonSet(daemonSetName, testNS, DaemonSetOpts{
+			daemonSetYAML := utils.GenerateDaemonSet(daemonSetName, testNS, utils.DaemonSetOpts{
 				SecretName: secretName,
 				SecretKey:  "password",
 				EnvVarName: "PASSWORD",
@@ -325,7 +325,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(len(initialUIDs)).To(BeNumerically(">=", 1))
 
 			By("updating the Secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -341,7 +341,7 @@ var _ = Describe("Workload Types", Ordered, func() {
 			Expect(newUIDs).NotTo(Equal(initialUIDs), "Pod UIDs should be different after reload")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"daemonset": {daemonSetName},
 				"secret":    {secretName},
 			})

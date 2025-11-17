@@ -157,7 +157,7 @@ stringData:
 				"Pods should NOT be reloaded when non-matching secret changes")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNamespace, map[string][]string{
 				"deployment": {deploymentName},
 				"secret":     {matchingSecretName, nonMatchingSecretName},
 			})
@@ -321,7 +321,7 @@ data:
 				"Pods should NOT be reloaded when non-matching configmap changes")
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNamespace, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNamespace, map[string][]string{
 				"deployment":     {deploymentName},
 				"configmap":      {matchingConfigMapName, nonMatchingConfigMapName},
 				"reloaderconfig": {reloaderConfigName},

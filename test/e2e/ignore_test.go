@@ -34,12 +34,12 @@ var _ = Describe("Ignore Feature", Ordered, func() {
 
 	BeforeAll(func() {
 		By("creating test namespace")
-		testNS = SetupTestNamespace()
+		testNS = utils.SetupTestNamespace()
 	})
 
 	AfterAll(func() {
 		By("cleaning up test namespace")
-		CleanupTestNamespace()
+		utils.CleanupTestNamespace()
 	})
 
 	Context("CRD ignoreResources", func() {
@@ -50,12 +50,12 @@ var _ = Describe("Ignore Feature", Ordered, func() {
 			reloaderConfigName := "ignore-config"
 
 			By("creating two secrets")
-			ignoredSecretYAML := GenerateSecret(secretIgnored, testNS, map[string]string{
+			ignoredSecretYAML := utils.GenerateSecret(secretIgnored, testNS, map[string]string{
 				"password": "initial-value-ignored",
 			})
 			Expect(utils.ApplyYAML(ignoredSecretYAML)).To(Succeed())
 
-			watchedSecretYAML := GenerateSecret(secretWatched, testNS, map[string]string{
+			watchedSecretYAML := utils.GenerateSecret(secretWatched, testNS, map[string]string{
 				"password": "initial-value-watched",
 			})
 			Expect(utils.ApplyYAML(watchedSecretYAML)).To(Succeed())
@@ -133,7 +133,7 @@ spec:
 			}, 30*time.Second, 1*time.Second).Should(BeTrue())
 
 			By("updating the ignored secret")
-			updatedIgnoredSecret := GenerateSecret(secretIgnored, testNS, map[string]string{
+			updatedIgnoredSecret := utils.GenerateSecret(secretIgnored, testNS, map[string]string{
 				"password": "updated-value-ignored",
 			})
 			Expect(utils.ApplyYAML(updatedIgnoredSecret)).To(Succeed())
@@ -147,7 +147,7 @@ spec:
 			Expect(currentGeneration).To(Equal(initialGeneration), "Generation should not change for ignored secret")
 
 			By("updating the watched secret")
-			updatedWatchedSecret := GenerateSecret(secretWatched, testNS, map[string]string{
+			updatedWatchedSecret := utils.GenerateSecret(secretWatched, testNS, map[string]string{
 				"password": "updated-value-watched",
 			})
 			Expect(utils.ApplyYAML(updatedWatchedSecret)).To(Succeed())
@@ -163,7 +163,7 @@ spec:
 			Expect(finalGeneration).To(BeNumerically(">", initialGeneration))
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deploymentName},
 				"secret":         {secretIgnored, secretWatched},
 				"reloaderconfig": {reloaderConfigName},
@@ -178,13 +178,13 @@ spec:
 			reloaderConfig2 := "config-ns2"
 
 			By("creating the same secret in both namespaces")
-			secret1YAML := GenerateSecret(secretName, testNS, map[string]string{
+			secret1YAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "initial-value-ns1",
 			})
 			Expect(utils.ApplyYAML(secret1YAML)).To(Succeed())
 
 			By("creating deployments in namespace")
-			deployment1YAML := GenerateDeployment(deployment1, testNS, DeploymentOpts{
+			deployment1YAML := utils.GenerateDeployment(deployment1, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -192,7 +192,7 @@ spec:
 			})
 			Expect(utils.ApplyYAML(deployment1YAML)).To(Succeed())
 
-			deployment2YAML := GenerateDeployment(deployment2, testNS, DeploymentOpts{
+			deployment2YAML := utils.GenerateDeployment(deployment2, testNS, utils.DeploymentOpts{
 				Replicas:   1,
 				SecretName: secretName,
 				SecretKey:  "password",
@@ -256,7 +256,7 @@ spec:
 			time.Sleep(5 * time.Second)
 
 			By("updating the secret")
-			updatedSecretYAML := GenerateSecret(secretName, testNS, map[string]string{
+			updatedSecretYAML := utils.GenerateSecret(secretName, testNS, map[string]string{
 				"password": "updated-value",
 			})
 			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
@@ -275,7 +275,7 @@ spec:
 			}, 30*time.Second, 2*time.Second).Should(Succeed())
 
 			// Cleanup resources on success
-			CleanupResourcesOnSuccess(testNS, map[string][]string{
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
 				"deployment":     {deployment1, deployment2},
 				"secret":         {secretName},
 				"reloaderconfig": {reloaderConfig1, reloaderConfig2},
