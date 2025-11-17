@@ -80,6 +80,10 @@ Configure the operator behavior using these flags:
 | `--namespaces-to-ignore` | Comma-separated list of namespaces to ignore | (none) | `kube-system,kube-public` |
 | `--reload-on-create` | Trigger reload when watched resources are created | `false` | `true` |
 | `--reload-on-delete` | Trigger reload when watched resources are deleted | `false` | `true` |
+| `--alert-on-reload` | Send alerts when workloads are reloaded | `false` | `true` |
+| `--alert-sink` | Alert destination type (slack, teams, gchat, webhook) | `webhook` | `slack` |
+| `--alert-webhook-url` | Webhook URL for sending reload alerts | (none) | `https://hooks.slack.com/...` |
+| `--alert-additional-info` | Additional context to include in alerts | (none) | `Production cluster` |
 | `--metrics-bind-address` | Address for metrics endpoint | `:8080` | `:9090` |
 | `--health-probe-bind-address` | Address for health probes | `:8081` | `:9091` |
 | `--leader-elect` | Enable leader election for HA | `false` | `true` |
@@ -105,6 +109,10 @@ spec:
         - --namespaces-to-ignore=kube-system,kube-public
         - --reload-on-create=true
         - --reload-on-delete=true
+        - --alert-on-reload=true
+        - --alert-sink=slack
+        - --alert-webhook-url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+        - --alert-additional-info=Production cluster notifications
 ```
 
 ### Documentation
@@ -241,9 +249,59 @@ More information can be found via the [Kubebuilder Documentation](https://book.k
 
 The project includes comprehensive E2E tests organized into separate suites for different features.
 
-### Running Tests
+### E2E Test Environment Setup
 
-#### All E2E Tests
+The E2E test environment uses [Kind](https://kind.sigs.k8s.io/) (Kubernetes in Docker) to create an isolated test cluster. The test workflow is divided into three stages:
+
+#### Stage 1: Setup (`make e2e-setup`)
+
+Sets up the complete E2E environment:
+
+```sh
+make e2e-setup
+```
+
+This target performs the following steps:
+1. **Checks for Kind** - Verifies Kind is installed
+2. **Creates Kind cluster** - Creates cluster named `reloader-operator-test-e2e` (if not exists)
+3. **Builds operator image** - Builds Docker image `example.com/reloader-operator:v0.0.1`
+4. **Loads image to Kind** - Makes the image available in the cluster
+5. **Installs CRDs** - Deploys ReloaderConfig CRD
+6. **Deploys operator** - Deploys the operator to `reloader-operator-system` namespace
+7. **Waits for readiness** - Ensures operator deployment is available
+
+**Output:**
+```
+Operator is deployed and ready for testing.
+Operator namespace: reloader-operator-system
+
+Next steps:
+  - Run tests: make e2e-test
+  - View logs: kubectl logs -n reloader-operator-system deployment/reloader-operator-controller-manager -f
+  - Cleanup: make e2e-cleanup
+```
+
+#### Stage 2: Run Tests
+
+Once the environment is set up, you can run different test suites:
+
+##### All E2E Tests (`make e2e-all`)
+
+Runs **all** E2E test suites in sequence:
+
+```sh
+make e2e-all
+```
+
+This executes:
+- Main E2E test suite (`e2e-test`)
+- Label selector tests (`e2e-test-label-selector`)
+- Namespace selector tests (`e2e-test-namespace-selector`)
+- Reload on create/delete tests (`e2e-test-reload-on-create-delete`)
+
+**Note:** This requires `e2e-setup` to be run first.
+
+##### Main E2E Test Suite (`make e2e-test`)
 
 ```sh
 make e2e-test
@@ -290,6 +348,91 @@ Tests the `--reload-on-create` and `--reload-on-delete` flags:
 - Reload when Secrets are created/deleted (annotation-based)
 - Reload when ConfigMaps are created/deleted (CRD-based)
 - StatefulSet reload on resource deletion
+
+#### Stage 3: Cleanup (`make e2e-cleanup`)
+
+Completely tears down the E2E environment:
+
+```sh
+make e2e-cleanup
+```
+
+This target performs:
+1. **Undeploys operator** - Removes operator deployment
+2. **Uninstalls CRDs** - Removes ReloaderConfig CRD
+3. **Deletes test namespace** - Removes `test-reloader` namespace
+4. **Deletes Kind cluster** - Destroys the entire cluster
+
+**Use this when:**
+- You're done testing and want to clean up all resources
+- You want to start fresh with a new cluster
+- You need to free up system resources
+
+### E2E Test Utility Commands
+
+#### Reset Test Namespace (`make e2e-reset`)
+
+Resets the test environment **without destroying the cluster**:
+
+```sh
+make e2e-reset
+```
+
+This deletes and recreates the `test-reloader` namespace, useful for:
+- Running tests multiple times without full cluster recreation
+- Cleaning up test resources between test runs
+- Faster iteration during test development
+
+**Advantage:** Much faster than `e2e-cleanup` + `e2e-setup` since it keeps the cluster and operator running.
+
+#### View Operator Logs (`make e2e-logs`)
+
+Stream operator logs in real-time:
+
+```sh
+make e2e-logs
+```
+
+Helpful for debugging test failures or observing operator behavior.
+
+#### Check Environment Status (`make e2e-status`)
+
+Check the current state of the E2E environment:
+
+```sh
+make e2e-status
+```
+
+### Complete E2E Testing Workflow
+
+**Quick test run:**
+```sh
+# Setup once
+make e2e-setup
+
+# Run all tests
+make e2e-all
+
+# Cleanup
+make e2e-cleanup
+```
+
+**Development/debugging workflow:**
+```sh
+# Setup once
+make e2e-setup
+
+# Run tests repeatedly
+make e2e-test
+make e2e-reset  # Quick cleanup between runs
+make e2e-test
+
+# View logs if needed
+make e2e-logs
+
+# Full cleanup when done
+make e2e-cleanup
+```
 
 ### Test Organization
 
