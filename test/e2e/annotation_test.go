@@ -264,6 +264,152 @@ var _ = Describe("Annotation-based Configuration", Ordered, func() {
 			})
 		})
 
+		It("should NOT reload when Secret has reloader.stakater.com/ignore annotation", func() {
+			secretName := "ignored-resource-secret"
+			deploymentName := "watch-ignored-secret-app"
+
+			By("creating a Secret with ignore annotation")
+			secretYAML := `apiVersion: v1
+kind: Secret
+metadata:
+  name: ` + secretName + `
+  namespace: ` + testNS + `
+  annotations:
+    reloader.stakater.com/ignore: "true"
+type: Opaque
+stringData:
+  password: initial-value`
+			Expect(utils.ApplyYAML(secretYAML)).To(Succeed())
+
+			By("creating a Deployment that watches the Secret")
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
+				Replicas:   2,
+				SecretName: secretName,
+				Annotations: map[string]string{
+					"secret.reloader.stakater.com/reload": secretName,
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("capturing initial generation")
+			initialGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("updating the ignored Secret")
+			updatedSecretYAML := `apiVersion: v1
+kind: Secret
+metadata:
+  name: ` + secretName + `
+  namespace: ` + testNS + `
+  annotations:
+    reloader.stakater.com/ignore: "true"
+type: Opaque
+stringData:
+  password: updated-value`
+			Expect(utils.ApplyYAML(updatedSecretYAML)).To(Succeed())
+
+			By("waiting a reasonable time for potential reload")
+			time.Sleep(15 * time.Second)
+
+			By("verifying generation did NOT change")
+			currentGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentGeneration).To(Equal(initialGeneration), "Generation should not change when Secret is ignored")
+
+			By("verifying pods were NOT restarted")
+			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when Secret is ignored")
+
+			// Cleanup resources on success
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"secret":     {secretName},
+			})
+		})
+
+		It("should NOT reload when ConfigMap has reloader.stakater.com/ignore annotation", func() {
+			configMapName := "ignored-resource-configmap"
+			deploymentName := "watch-ignored-configmap-app"
+
+			By("creating a ConfigMap with ignore annotation")
+			configMapYAML := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ` + configMapName + `
+  namespace: ` + testNS + `
+  annotations:
+    reloader.stakater.com/ignore: "true"
+data:
+  config: initial-value`
+			Expect(utils.ApplyYAML(configMapYAML)).To(Succeed())
+
+			By("creating a Deployment that watches the ConfigMap")
+			deploymentYAML := utils.GenerateDeployment(deploymentName, testNS, utils.DeploymentOpts{
+				Replicas:      2,
+				ConfigMapName: configMapName,
+				Annotations: map[string]string{
+					"configmap.reloader.stakater.com/reload": configMapName,
+				},
+			})
+			Expect(utils.ApplyYAML(deploymentYAML)).To(Succeed())
+
+			By("waiting for Deployment to be ready")
+			Eventually(func() error {
+				return utils.WaitForPodsReady(testNS, "app="+deploymentName, 2, 30*time.Second)
+			}, 2*time.Minute, 5*time.Second).Should(Succeed())
+
+			By("capturing initial pod UIDs")
+			initialUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(initialUIDs).To(HaveLen(2))
+
+			By("capturing initial generation")
+			initialGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+
+			By("updating the ignored ConfigMap")
+			updatedConfigMapYAML := `apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ` + configMapName + `
+  namespace: ` + testNS + `
+  annotations:
+    reloader.stakater.com/ignore: "true"
+data:
+  config: updated-value`
+			Expect(utils.ApplyYAML(updatedConfigMapYAML)).To(Succeed())
+
+			By("waiting a reasonable time for potential reload")
+			time.Sleep(15 * time.Second)
+
+			By("verifying generation did NOT change")
+			currentGeneration, err := utils.GetWorkloadGeneration(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentGeneration).To(Equal(initialGeneration), "Generation should not change when ConfigMap is ignored")
+
+			By("verifying pods were NOT restarted")
+			currentUIDs, err := utils.GetPodUIDs(testNS, "deployment", deploymentName)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(currentUIDs).To(Equal(initialUIDs), "Pod UIDs should remain the same when ConfigMap is ignored")
+
+			// Cleanup resources on success
+			utils.CleanupResourcesOnSuccess(testNS, map[string][]string{
+				"deployment": {deploymentName},
+				"configmap":  {configMapName},
+			})
+		})
+
 		It("should support multiple secrets in comma-separated annotation", func() {
 			secret1Name := "multi-secret-1"
 			secret2Name := "multi-secret-2"

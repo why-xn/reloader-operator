@@ -361,11 +361,12 @@ These annotations prevent reloads from being triggered.
 
 **Applied to:** ConfigMap, Secret
 **Value:** `"true"` or `"false"`
-**Status:** ⚠️ **Partial** - Only checked on ReloaderConfig, not on resources
+**Status:** ✅ **Fully Supported**
 
 **What it does:**
 - GLOBAL ignore flag - prevents ANY workload from reloading when this resource changes
 - Useful for static ConfigMaps/Secrets that never require reload
+- Works on both update and create events
 
 **Example:**
 ```yaml
@@ -380,14 +381,16 @@ data:
   locale: "en_US"
 ```
 
-**Current Implementation:**
-- Only checked on ReloaderConfig objects (line 71 in finder.go)
-- NOT checked on ConfigMaps/Secrets themselves
+**Implementation:**
+- Checked on ReloaderConfig objects: `internal/pkg/workload/finder.go:72`
+- Checked on Secret updates: `internal/controller/reconciler_events.go:69`
+- Checked on ConfigMap updates: `internal/controller/reconciler_events.go:138`
+- Checked on Secret creates: `internal/controller/reconciler_events.go:207`
+- Checked on ConfigMap creates: `internal/controller/reconciler_events.go:300`
 
 **Code Location:**
-- Constant: `internal/pkg/util/helpers.go:31` - `AnnotationIgnore`
-- Partial check: `internal/pkg/workload/finder.go:71` (only for ReloaderConfig)
-- **Missing:** Check in `reconcileSecret()` and `reconcileConfigMap()`
+- Constant: `internal/pkg/util/helpers.go:32` - `AnnotationIgnore`
+- E2E Tests: `test/e2e/annotation_test.go:267,341`
 
 ---
 

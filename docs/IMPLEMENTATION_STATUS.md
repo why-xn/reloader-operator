@@ -248,7 +248,6 @@ make e2e-test-reload-on-create-delete  # Create/delete tests
 
 ### Medium Priority
 - ❌ Exclusion annotations (`configmaps.exclude`, `secrets.exclude`) not implemented
-- ❌ Ignore annotation on ConfigMaps/Secrets not fully implemented
 
 ### Low Priority
 - ❌ Alerting integration (Slack, Teams, Google Chat)

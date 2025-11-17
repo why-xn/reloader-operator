@@ -65,6 +65,14 @@ func (r *ReloaderConfigReconciler) reconcileSecret(
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Phase 0: Check if Secret should be ignored
+	if secret.Annotations != nil && secret.Annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info("Secret marked as ignored, skipping reload",
+			"secret", secret.Name,
+			"namespace", secret.Namespace)
+		return ctrl.Result{}, nil
+	}
+
 	// Phase 1: Check if Secret data actually changed (hash-based change detection)
 	currentHash := util.CalculateHash(secret.Data)
 	storedHash := r.getStoredHash(secret.Annotations)
@@ -126,6 +134,14 @@ func (r *ReloaderConfigReconciler) reconcileConfigMap(
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
 
+	// Phase 0: Check if ConfigMap should be ignored
+	if configMap.Annotations != nil && configMap.Annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info("ConfigMap marked as ignored, skipping reload",
+			"configMap", configMap.Name,
+			"namespace", configMap.Namespace)
+		return ctrl.Result{}, nil
+	}
+
 	// Phase 1: Check if ConfigMap data actually changed (hash-based change detection)
 	// Note: ConfigMaps have both Data and BinaryData, so we merge them
 	data := util.MergeDataMaps(configMap.Data, configMap.BinaryData)
@@ -186,6 +202,14 @@ func (r *ReloaderConfigReconciler) reconcileSecretCreated(
 	secret *corev1.Secret,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	// Check if Secret should be ignored
+	if secret.Annotations != nil && secret.Annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info("Secret marked as ignored, skipping reload on create",
+			"secret", secret.Name,
+			"namespace", secret.Namespace)
+		return ctrl.Result{}, nil
+	}
 	logger.Info("Secret created", "name", secret.Name, "namespace", secret.Namespace)
 
 	// Calculate hash for the new Secret
@@ -271,6 +295,15 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 	configMap *corev1.ConfigMap,
 ) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+
+	// Check if ConfigMap should be ignored
+	if configMap.Annotations != nil && configMap.Annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info("ConfigMap marked as ignored, skipping reload on create",
+			"configMap", configMap.Name,
+			"namespace", configMap.Namespace)
+		return ctrl.Result{}, nil
+	}
+
 	logger.Info("ConfigMap created", "name", configMap.Name, "namespace", configMap.Namespace)
 
 	// Calculate hash for the new ConfigMap

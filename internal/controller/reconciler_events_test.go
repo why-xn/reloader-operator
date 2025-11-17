@@ -414,4 +414,234 @@ var _ = Describe("Event Handlers", func() {
 			}, timeout, interval).Should(BeTrue())
 		})
 	})
+
+	Context("When Secret has ignore annotation", func() {
+		ctx := context.Background()
+
+		It("Should skip reload when Secret is updated with ignore annotation", func() {
+			// Create deployment
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-ignore-secret-app",
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test-ignore-secret-app"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"app": "test-ignore-secret-app"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "test",
+									Image: "nginx:latest",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+
+			// Create ReloaderConfig
+			reloaderConfig := &reloaderv1alpha1.ReloaderConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-ignore-secret-config",
+					Namespace: "default",
+				},
+				Spec: reloaderv1alpha1.ReloaderConfigSpec{
+					WatchedResources: &reloaderv1alpha1.WatchedResources{
+						Secrets: []string{"ignored-test-secret"},
+					},
+					Targets: []reloaderv1alpha1.TargetWorkload{
+						{
+							Kind: "Deployment",
+							Name: "test-ignore-secret-app",
+						},
+					},
+					ReloadStrategy: "env-vars",
+				},
+			}
+			Expect(k8sClient.Create(ctx, reloaderConfig)).To(Succeed())
+
+			// Create Secret with ignore annotation
+			secret := &corev1.Secret{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ignored-test-secret",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.AnnotationIgnore: "true",
+					},
+				},
+				Data: map[string][]byte{
+					"password": []byte("initial"),
+				},
+			}
+			Expect(k8sClient.Create(ctx, secret)).To(Succeed())
+
+			// Wait a bit for initial reconciliation
+			time.Sleep(2 * time.Second)
+
+			// Get initial generation
+			initialDeployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "test-ignore-secret-app",
+				Namespace: "default",
+			}, initialDeployment)).To(Succeed())
+			initialGeneration := initialDeployment.Generation
+
+			// Update Secret (should be ignored)
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "ignored-test-secret",
+					Namespace: "default",
+				}, secret)
+				if err != nil {
+					return err
+				}
+				secret.Data["password"] = []byte("updated")
+				return k8sClient.Update(ctx, secret)
+			}, timeout, interval).Should(Succeed())
+
+			// Wait for potential reconciliation
+			time.Sleep(3 * time.Second)
+
+			// Verify deployment was NOT updated (generation unchanged)
+			updatedDeployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "test-ignore-secret-app",
+				Namespace: "default",
+			}, updatedDeployment)).To(Succeed())
+
+			Expect(updatedDeployment.Generation).To(Equal(initialGeneration),
+				"Deployment generation should not change when Secret is ignored")
+
+			// Verify no env var was added
+			expectedEnvVar := util.GetEnvVarName(util.KindSecret, "ignored-test-secret")
+			for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
+				for _, env := range container.Env {
+					Expect(env.Name).NotTo(Equal(expectedEnvVar),
+						"No env var should be added when Secret is ignored")
+				}
+			}
+		})
+	})
+
+	Context("When ConfigMap has ignore annotation", func() {
+		ctx := context.Background()
+
+		It("Should skip reload when ConfigMap is updated with ignore annotation", func() {
+			// Create deployment
+			deployment := &appsv1.Deployment{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-ignore-cm-app",
+					Namespace: "default",
+				},
+				Spec: appsv1.DeploymentSpec{
+					Selector: &metav1.LabelSelector{
+						MatchLabels: map[string]string{"app": "test-ignore-cm-app"},
+					},
+					Template: corev1.PodTemplateSpec{
+						ObjectMeta: metav1.ObjectMeta{
+							Labels: map[string]string{"app": "test-ignore-cm-app"},
+						},
+						Spec: corev1.PodSpec{
+							Containers: []corev1.Container{
+								{
+									Name:  "test",
+									Image: "nginx:latest",
+								},
+							},
+						},
+					},
+				},
+			}
+			Expect(k8sClient.Create(ctx, deployment)).To(Succeed())
+
+			// Create ReloaderConfig
+			reloaderConfig := &reloaderv1alpha1.ReloaderConfig{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "test-ignore-cm-config",
+					Namespace: "default",
+				},
+				Spec: reloaderv1alpha1.ReloaderConfigSpec{
+					WatchedResources: &reloaderv1alpha1.WatchedResources{
+						ConfigMaps: []string{"ignored-test-configmap"},
+					},
+					Targets: []reloaderv1alpha1.TargetWorkload{
+						{
+							Kind: "Deployment",
+							Name: "test-ignore-cm-app",
+						},
+					},
+					ReloadStrategy: "env-vars",
+				},
+			}
+			Expect(k8sClient.Create(ctx, reloaderConfig)).To(Succeed())
+
+			// Create ConfigMap with ignore annotation
+			configMap := &corev1.ConfigMap{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "ignored-test-configmap",
+					Namespace: "default",
+					Annotations: map[string]string{
+						util.AnnotationIgnore: "true",
+					},
+				},
+				Data: map[string]string{
+					"config": "initial",
+				},
+			}
+			Expect(k8sClient.Create(ctx, configMap)).To(Succeed())
+
+			// Wait a bit for initial reconciliation
+			time.Sleep(2 * time.Second)
+
+			// Get initial generation
+			initialDeployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "test-ignore-cm-app",
+				Namespace: "default",
+			}, initialDeployment)).To(Succeed())
+			initialGeneration := initialDeployment.Generation
+
+			// Update ConfigMap (should be ignored)
+			Eventually(func() error {
+				err := k8sClient.Get(ctx, types.NamespacedName{
+					Name:      "ignored-test-configmap",
+					Namespace: "default",
+				}, configMap)
+				if err != nil {
+					return err
+				}
+				configMap.Data["config"] = "updated"
+				return k8sClient.Update(ctx, configMap)
+			}, timeout, interval).Should(Succeed())
+
+			// Wait for potential reconciliation
+			time.Sleep(3 * time.Second)
+
+			// Verify deployment was NOT updated (generation unchanged)
+			updatedDeployment := &appsv1.Deployment{}
+			Expect(k8sClient.Get(ctx, types.NamespacedName{
+				Name:      "test-ignore-cm-app",
+				Namespace: "default",
+			}, updatedDeployment)).To(Succeed())
+
+			Expect(updatedDeployment.Generation).To(Equal(initialGeneration),
+				"Deployment generation should not change when ConfigMap is ignored")
+
+			// Verify no env var was added
+			expectedEnvVar := util.GetEnvVarName(util.KindConfigMap, "ignored-test-configmap")
+			for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
+				for _, env := range container.Env {
+					Expect(env.Name).NotTo(Equal(expectedEnvVar),
+						"No env var should be added when ConfigMap is ignored")
+				}
+			}
+		})
+	})
 })
