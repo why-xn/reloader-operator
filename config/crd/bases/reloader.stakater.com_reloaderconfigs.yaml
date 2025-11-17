@@ -101,14 +101,24 @@ spec:
               reloadStrategy:
                 default: env-vars
                 description: |-
-                  ReloadStrategy specifies how to trigger rolling updates
-                  Valid values are: "env-vars" (default), "annotations", "restart"
-                  - env-vars: Updates a dummy environment variable to trigger pod restart
+                  ReloadStrategy specifies how to modify pod template when RolloutStrategy is "rollout"
+                  Valid values are: "env-vars" (default), "annotations"
+                  - env-vars: Updates RELOADER_TRIGGERED_AT environment variable
                   - annotations: Updates pod template annotations (better for GitOps)
-                  - restart: Deletes pods without modifying template (most GitOps-friendly)
+                  This field is ignored when RolloutStrategy is "restart"
                 enum:
                 - env-vars
                 - annotations
+                type: string
+              rolloutStrategy:
+                default: rollout
+                description: |-
+                  RolloutStrategy specifies how to deploy the change to workloads
+                  Valid values are: "rollout" (default), "restart"
+                  - rollout: Modifies pod template to trigger rolling update (uses ReloadStrategy)
+                  - restart: Deletes pods directly without modifying template (most GitOps-friendly)
+                enum:
+                - rollout
                 - restart
                 type: string
               targets:
@@ -142,12 +152,12 @@ spec:
                       pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
                       type: string
                     reloadStrategy:
-                      description: ReloadStrategy overrides the global reload strategy
-                        for this specific workload
+                      description: |-
+                        ReloadStrategy overrides the global reload strategy for this specific workload
+                        Only applies when RolloutStrategy is "rollout"
                       enum:
                       - env-vars
                       - annotations
-                      - restart
                       type: string
                     requireReference:
                       description: |-
@@ -157,6 +167,13 @@ spec:
                         2. The workload's pod spec actually references the changed resource
                         This allows fine-grained control over which targets reload for which resources
                       type: boolean
+                    rolloutStrategy:
+                      description: RolloutStrategy overrides the global rollout strategy
+                        for this specific workload
+                      enum:
+                      - rollout
+                      - restart
+                      type: string
                   required:
                   - kind
                   - name

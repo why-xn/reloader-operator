@@ -55,6 +55,10 @@ type ReloaderConfigReconciler struct {
 	ReloadOnCreate bool
 	ReloadOnDelete bool
 
+	// Global strategy defaults
+	RolloutStrategy string // Default: "rollout"
+	ReloadStrategy  string // Default: "env-vars"
+
 	// Resource filtering
 	ResourceLabelSelector labels.Selector
 

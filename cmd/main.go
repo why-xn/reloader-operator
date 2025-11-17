@@ -74,6 +74,8 @@ func main() {
 	var alertSink string
 	var alertWebhookURL string
 	var alertAdditionalInfo string
+	var rolloutStrategy string
+	var reloadStrategy string
 	var tlsOpts []func(*tls.Config)
 	flag.StringVar(&metricsAddr, "metrics-bind-address", "0", "The address the metrics endpoint binds to. "+
 		"Use :8443 for HTTPS or :8080 for HTTP, or leave as 0 to disable the metrics service.")
@@ -110,6 +112,10 @@ func main() {
 		"Webhook URL for sending reload alerts (required if alert-on-reload is true)")
 	flag.StringVar(&alertAdditionalInfo, "alert-additional-info", "",
 		"Additional information to include in alert messages")
+	flag.StringVar(&rolloutStrategy, "rollout-strategy", "rollout",
+		"Default rollout strategy: 'rollout' (modify template) or 'restart' (delete pods)")
+	flag.StringVar(&reloadStrategy, "reload-strategy", "env-vars",
+		"Default reload strategy when rollout-strategy is 'rollout': 'env-vars' or 'annotations'")
 	opts := zap.Options{
 		Development: true,
 	}
@@ -272,6 +278,8 @@ func main() {
 		AlertManager:          alerts.NewAlertManager(mgr.GetClient(), alertOnReload, alertSink, alertWebhookURL, alertAdditionalInfo),
 		ReloadOnCreate:        reloadOnCreate,
 		ReloadOnDelete:        reloadOnDelete,
+		RolloutStrategy:       rolloutStrategy,
+		ReloadStrategy:        reloadStrategy,
 		ResourceLabelSelector: resourceSelector,
 		NamespaceSelector:     namespaceFilter,
 		IgnoredNamespaces:     ignoredNamespaces,

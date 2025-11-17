@@ -475,43 +475,34 @@ spec:
 
 ## 5. Reload Strategy Annotations
 
-These annotations control HOW the reload is triggered.
+These annotations control HOW the reload is triggered using a **two-level strategy system**:
+1. **Rollout Strategy**: HOW to deploy the change (rollout vs restart)
+2. **Reload Strategy**: HOW to modify the template when using rollout (env-vars vs annotations)
 
 ### 5.1 `reloader.stakater.com/rollout-strategy`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** `"env-vars"`, `"annotations"`, `"restart"`, or `"rollout"` (backward compatibility)
+**Value:** `"rollout"` or `"restart"`
 **Status:** ✅ **Fully Implemented**
 
-**Backward Compatibility:**
-- Original Reloader uses `"rollout"` (default) and `"restart"`
-- We support both original values PLUS enhanced options
-- `"rollout"` maps to `"env-vars"` for backward compatibility
-- `"restart"` works identically in both versions
-
 **What it does:**
-- Controls how Kubernetes rolling update is triggered
+- Controls the deployment mechanism for changes
+- This is the **first-level decision**: HOW to deploy
 
-**Strategies:**
+**Rollout Strategies:**
 
-1. **`env-vars` (default)** - ✅ Supported
-   - Adds/updates environment variable: `RELOADER_TRIGGERED_AT=<timestamp>`
-   - Forces pod restart via spec change
-   - Works with all Kubernetes versions
-   - **Alias:** `"rollout"` (for backward compatibility with original Reloader)
+1. **`rollout` (default)** - ✅ Supported
+   - Modifies pod template to trigger Kubernetes rolling update
+   - Template modification is determined by the reload strategy (see below)
+   - Standard Kubernetes deployment behavior
+   - Changes are visible in deployment spec
 
-2. **`annotations`** - ✅ Supported
-   - Updates pod template annotation: `reloader.stakater.com/last-reload=<timestamp>`
-   - GitOps-friendly (ArgoCD/Flux ignore annotation changes)
-   - Cleaner pod spec
-   - **Enhancement:** Not available in original Reloader
-
-3. **`restart`** - ✅ Supported
-   - Deletes pods without changing pod template
+2. **`restart`** - ✅ Supported
+   - Deletes pods directly WITHOUT modifying pod template
    - **Most GitOps-friendly** (no template changes at all)
-   - Uses `kubectl rollout restart` equivalent
+   - Equivalent to `kubectl rollout restart`
    - Kubernetes recreates pods with updated ConfigMap/Secret data
-   - **Same as original Reloader**
+   - No drift detection in ArgoCD/Flux
 
 **Example:**
 ```yaml
@@ -521,16 +512,70 @@ metadata:
   name: my-app
   annotations:
     reloader.stakater.com/auto: "true"
-    reloader.stakater.com/rollout-strategy: "annotations"  # Use annotations strategy
+    reloader.stakater.com/rollout-strategy: "restart"  # Delete pods without template changes
 ```
 
 **Code Location:**
-- Constant: `internal/pkg/util/helpers.go:32` - `AnnotationReloadStrategy`
-- Constants: `internal/pkg/util/helpers.go:65-70` - Strategy values (including `ReloadStrategyRestart` and `ReloadStrategyRollout` alias)
-- Normalization: `internal/pkg/util/helpers.go:82-93` - `NormalizeStrategy()` function
+- Constant: `internal/pkg/util/helpers.go:32` - `AnnotationRolloutStrategy`
+- Constants: `internal/pkg/util/helpers.go:53-56` - Rollout strategy values
 - Used in: `internal/pkg/workload/finder.go:238,267,296`
-- Applied in: `internal/pkg/workload/updater.go:43-70` - TriggerReload method
-- Restart implementation: `internal/pkg/workload/updater.go:282-345` - `restartWorkloadPods()` function
+- Applied in: `internal/pkg/workload/updater.go` - TriggerReload method
+- Restart implementation: `internal/pkg/workload/updater.go` - `restartWorkloadPods()` function
+
+---
+
+### 5.2 `reloader.stakater.com/reload-strategy` (CRD-only)
+
+**Applied to:** ReloaderConfig CRD (not supported as workload annotation)
+**Value:** `"env-vars"` or `"annotations"`
+**Status:** ✅ **Fully Implemented**
+
+**What it does:**
+- Controls HOW the pod template is modified when rollout strategy is `"rollout"`
+- Only applies when rollout strategy is `"rollout"` (ignored when `"restart"`)
+- This is the **second-level decision**: HOW to modify the template
+
+**Reload Strategies:**
+
+1. **`env-vars` (default)** - ✅ Supported
+   - Adds/updates environment variable: `RELOADER_TRIGGERED_AT=<timestamp>`
+   - Forces pod restart via spec change
+   - Works with all Kubernetes versions
+   - Template modification visible in deployment spec
+
+2. **`annotations`** - ✅ Supported
+   - Updates pod template annotation: `reloader.stakater.com/last-reloaded-from=<json>`
+   - GitOps-friendly when using `rollout` (ArgoCD/Flux can ignore annotation changes)
+   - Cleaner pod spec - no environment variable pollution
+   - **Note:** For maximum GitOps compatibility, use `rollout-strategy: restart` instead
+
+**Example (CRD):**
+```yaml
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: my-app-reloader
+spec:
+  rolloutStrategy: rollout      # Modify template
+  reloadStrategy: annotations   # Modify using annotations
+  targets:
+    - kind: Deployment
+      name: my-app
+```
+
+**Strategy Combinations:**
+
+| Rollout Strategy | Reload Strategy | Result |
+|------------------|-----------------|--------|
+| `rollout` | `env-vars` | Modify template with env var (default) |
+| `rollout` | `annotations` | Modify template with annotation |
+| `restart` | (any) | Delete pods directly (reload strategy ignored) |
+
+**Code Location:**
+- Used in CRD: `api/v1alpha1/reloaderconfig_types.go`
+- Applied in: `internal/pkg/workload/updater.go` - TriggerReload method
+- Env-vars implementation: `internal/pkg/workload/updater.go` - `reloadDeployment()` etc.
+- Annotations implementation: `internal/pkg/workload/updater.go` - `reloadDeployment()` etc.
 
 ---
 

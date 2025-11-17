@@ -66,10 +66,11 @@ func TestTriggerReloadEnvVarsStrategy(t *testing.T) {
 	updater := NewUpdater(fakeClient)
 
 	target := Target{
-		Kind:           util.KindDeployment,
-		Name:           "test-app",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyEnvVars,
+		Kind:            util.KindDeployment,
+		Name:            "test-app",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRollout,
+		ReloadStrategy:  util.ReloadStrategyEnvVars,
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "db-secret", "default", "test-hash")
@@ -144,10 +145,11 @@ func TestTriggerReloadAnnotationsStrategy(t *testing.T) {
 	updater := NewUpdater(fakeClient)
 
 	target := Target{
-		Kind:           util.KindDeployment,
-		Name:           "test-app",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyAnnotations,
+		Kind:            util.KindDeployment,
+		Name:            "test-app",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRollout,
+		ReloadStrategy:  util.ReloadStrategyAnnotations,
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "app-config", "default", "test-hash")
@@ -229,10 +231,11 @@ func TestTriggerReloadStatefulSet(t *testing.T) {
 	updater := NewUpdater(fakeClient)
 
 	target := Target{
-		Kind:           util.KindStatefulSet,
-		Name:           "test-sts",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyEnvVars,
+		Kind:            util.KindStatefulSet,
+		Name:            "test-sts",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRollout,
+		ReloadStrategy:  util.ReloadStrategyEnvVars,
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "redis-secret", "default", "test-hash")
@@ -300,10 +303,11 @@ func TestTriggerReloadDaemonSet(t *testing.T) {
 	updater := NewUpdater(fakeClient)
 
 	target := Target{
-		Kind:           util.KindDaemonSet,
-		Name:           "test-ds",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyEnvVars,
+		Kind:            util.KindDaemonSet,
+		Name:            "test-ds",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRollout,
+		ReloadStrategy:  util.ReloadStrategyEnvVars,
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "fluentd-config", "default", "test-hash")
@@ -462,10 +466,10 @@ func TestTriggerReloadRestartStrategy(t *testing.T) {
 	updater := NewUpdater(fakeClient)
 
 	target := Target{
-		Kind:           util.KindDeployment,
-		Name:           "test-app",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyRestart,
+		Kind:            util.KindDeployment,
+		Name:            "test-app",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRestart,
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "app-secret", "default", "test-hash")
@@ -514,7 +518,7 @@ func TestTriggerReloadRestartStrategy(t *testing.T) {
 	}
 }
 
-func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
+func TestTriggerReloadDefaultReloadStrategy(t *testing.T) {
 	scheme := runtime.NewScheme()
 	_ = corev1.AddToScheme(scheme)
 	_ = appsv1.AddToScheme(scheme)
@@ -547,12 +551,13 @@ func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
 	fakeClient := fake.NewClientBuilder().WithScheme(scheme).WithRuntimeObjects(deployment).Build()
 	updater := NewUpdater(fakeClient)
 
-	// Use "rollout" strategy (backward compatibility alias for "env-vars")
+	// Use "rollout" rollout strategy with no reload strategy specified (should default to env-vars)
 	target := Target{
-		Kind:           util.KindDeployment,
-		Name:           "test-app",
-		Namespace:      "default",
-		ReloadStrategy: util.ReloadStrategyRollout,
+		Kind:            util.KindDeployment,
+		Name:            "test-app",
+		Namespace:       "default",
+		RolloutStrategy: util.RolloutStrategyRollout,
+		// ReloadStrategy not specified - should default to env-vars
 	}
 
 	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "nginx-config", "default", "test-hash")
@@ -570,7 +575,7 @@ func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
 		t.Fatalf("failed to get updated deployment: %v", err)
 	}
 
-	// Check that RELOADER_TRIGGERED_AT env var was added (rollout maps to env-vars)
+	// Check that RELOADER_TRIGGERED_AT env var was added (default reload strategy is env-vars)
 	found := false
 	for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
 		for _, env := range container.Env {
@@ -582,6 +587,6 @@ func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
 	}
 
 	if !found {
-		t.Error("rollout strategy (alias for env-vars) should add RELOADER_TRIGGERED_AT env var")
+		t.Error("when reload strategy not specified, should default to env-vars and add RELOADER_TRIGGERED_AT env var")
 	}
 }

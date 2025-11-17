@@ -12,10 +12,13 @@ Reloader Operator is a modern rewrite of [Stakater Reloader](https://github.com/
 - **Multiple Configuration Methods**:
   - Annotation-based (backward compatible with original Reloader)
   - CRD-based (ReloaderConfig custom resource)
-- **Flexible Reload Strategies**:
-  - `env-vars`: Inject environment variable to trigger reload
-  - `annotations`: Update pod template annotations (GitOps-friendly)
-  - `restart`: Delete pods without template changes
+- **Flexible Deployment Strategies**:
+  - **Rollout Strategy** (HOW to deploy):
+    - `rollout`: Modify pod template to trigger rolling update (default)
+    - `restart`: Delete pods directly without template changes (GitOps-friendly)
+  - **Reload Strategy** (HOW to modify template when using rollout):
+    - `env-vars`: Inject environment variable with timestamp (default)
+    - `annotations`: Update pod template annotations only
 - **Namespace Filtering**: Filter which namespaces to watch using label selectors or ignore lists
 - **Resource Filtering**: Filter ConfigMaps/Secrets using label selectors
 - **Auto-Discovery**: Automatically detect all ConfigMaps/Secrets referenced in workloads
@@ -64,7 +67,8 @@ spec:
   targets:
     - kind: Deployment
       name: my-app
-  reloadStrategy: env-vars
+  rolloutStrategy: rollout  # How to deploy: "rollout" or "restart"
+  reloadStrategy: env-vars  # How to modify template (when rollout): "env-vars" or "annotations"
 ```
 
 ## Configuration
@@ -80,6 +84,8 @@ Configure the operator behavior using these flags:
 | `--namespaces-to-ignore` | Comma-separated list of namespaces to ignore | (none) | `kube-system,kube-public` |
 | `--reload-on-create` | Trigger reload when watched resources are created | `false` | `true` |
 | `--reload-on-delete` | Trigger reload when watched resources are deleted | `false` | `true` |
+| `--rollout-strategy` | Global default rollout strategy (rollout, restart) | `rollout` | `restart` |
+| `--reload-strategy` | Global default reload strategy (env-vars, annotations) | `env-vars` | `annotations` |
 | `--alert-on-reload` | Send alerts when workloads are reloaded | `false` | `true` |
 | `--alert-sink` | Alert destination type (slack, teams, gchat, webhook) | `webhook` | `slack` |
 | `--alert-webhook-url` | Webhook URL for sending reload alerts | (none) | `https://hooks.slack.com/...` |
@@ -130,7 +136,7 @@ Quick reference for most-used annotations:
 - `reloader.stakater.com/auto: "true"` - Auto-reload all referenced resources
 - `secret.reloader.stakater.com/reload: "secret1,secret2"` - Reload specific Secrets
 - `configmap.reloader.stakater.com/reload: "cm1,cm2"` - Reload specific ConfigMaps
-- `reloader.stakater.com/rollout-strategy: "annotations"` - Set reload strategy (env-vars, annotations, restart)
+- `reloader.stakater.com/rollout-strategy: "restart"` - Set rollout strategy (rollout, restart)
 
 ## Getting Started
 

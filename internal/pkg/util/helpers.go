@@ -30,7 +30,7 @@ const (
 	AnnotationSearch           = "reloader.stakater.com/search"
 	AnnotationMatch            = "reloader.stakater.com/match"
 	AnnotationIgnore           = "reloader.stakater.com/ignore"
-	AnnotationReloadStrategy   = "reloader.stakater.com/rollout-strategy"
+	AnnotationRolloutStrategy  = "reloader.stakater.com/rollout-strategy"
 	AnnotationLastReload       = "reloader.stakater.com/last-reload"
 	AnnotationLastReloadedFrom = "reloader.stakater.com/last-reloaded-from"
 
@@ -61,14 +61,16 @@ const (
 	KindCronJob          = "CronJob"
 )
 
-// Reload strategies
+// Rollout strategies (how to deploy the change)
 const (
-	ReloadStrategyEnvVars     = "env-vars"
-	ReloadStrategyAnnotations = "annotations"
-	ReloadStrategyRestart     = "restart"
+	RolloutStrategyRestart = "restart" // Delete pods directly (no template modification)
+	RolloutStrategyRollout = "rollout" // Modify template and trigger rolling update
+)
 
-	// Backward compatibility aliases (original Reloader values)
-	ReloadStrategyRollout = "rollout" // Alias for env-vars
+// Reload strategies (how to modify template when rollout strategy is "rollout")
+const (
+	ReloadStrategyEnvVars     = "env-vars"    // Update RELOADER_TRIGGERED_AT environment variable
+	ReloadStrategyAnnotations = "annotations" // Update pod template annotations
 )
 
 // GetDefaultNamespace returns the namespace from target or falls back to default
@@ -79,27 +81,24 @@ func GetDefaultNamespace(targetNamespace, defaultNamespace string) string {
 	return defaultNamespace
 }
 
-// NormalizeStrategy converts strategy aliases to canonical values for backward compatibility
-func NormalizeStrategy(strategy string) string {
-	switch strategy {
-	case ReloadStrategyRollout:
-		// Original Reloader used "rollout", map it to our "env-vars"
-		return ReloadStrategyEnvVars
-	case ReloadStrategyEnvVars, ReloadStrategyAnnotations, ReloadStrategyRestart:
-		return strategy
-	default:
-		// Unknown strategy, return as-is (will be validated elsewhere)
-		return strategy
-	}
-}
-
-// GetDefaultStrategy returns the strategy from target or falls back to default
-func GetDefaultStrategy(targetStrategy, defaultStrategy string) string {
+// GetDefaultRolloutStrategy returns the rollout strategy from target or falls back to default
+func GetDefaultRolloutStrategy(targetStrategy, defaultStrategy string) string {
 	if targetStrategy != "" {
-		return NormalizeStrategy(targetStrategy)
+		return targetStrategy
 	}
 	if defaultStrategy != "" {
-		return NormalizeStrategy(defaultStrategy)
+		return defaultStrategy
+	}
+	return RolloutStrategyRollout // ultimate default
+}
+
+// GetDefaultReloadStrategy returns the reload strategy from target or falls back to default
+func GetDefaultReloadStrategy(targetStrategy, defaultStrategy string) string {
+	if targetStrategy != "" {
+		return targetStrategy
+	}
+	if defaultStrategy != "" {
+		return defaultStrategy
 	}
 	return ReloadStrategyEnvVars // ultimate default
 }

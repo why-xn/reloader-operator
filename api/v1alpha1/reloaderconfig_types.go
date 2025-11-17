@@ -33,12 +33,21 @@ type ReloaderConfigSpec struct {
 	// +optional
 	Targets []TargetWorkload `json:"targets,omitempty"`
 
-	// ReloadStrategy specifies how to trigger rolling updates
-	// Valid values are: "env-vars" (default), "annotations", "restart"
-	// - env-vars: Updates a dummy environment variable to trigger pod restart
+	// RolloutStrategy specifies how to deploy the change to workloads
+	// Valid values are: "rollout" (default), "restart"
+	// - rollout: Modifies pod template to trigger rolling update (uses ReloadStrategy)
+	// - restart: Deletes pods directly without modifying template (most GitOps-friendly)
+	// +kubebuilder:validation:Enum=rollout;restart
+	// +kubebuilder:default=rollout
+	// +optional
+	RolloutStrategy string `json:"rolloutStrategy,omitempty"`
+
+	// ReloadStrategy specifies how to modify pod template when RolloutStrategy is "rollout"
+	// Valid values are: "env-vars" (default), "annotations"
+	// - env-vars: Updates RELOADER_TRIGGERED_AT environment variable
 	// - annotations: Updates pod template annotations (better for GitOps)
-	// - restart: Deletes pods without modifying template (most GitOps-friendly)
-	// +kubebuilder:validation:Enum=env-vars;annotations;restart
+	// This field is ignored when RolloutStrategy is "restart"
+	// +kubebuilder:validation:Enum=env-vars;annotations
 	// +kubebuilder:default=env-vars
 	// +optional
 	ReloadStrategy string `json:"reloadStrategy,omitempty"`
@@ -101,8 +110,14 @@ type TargetWorkload struct {
 	// +optional
 	Namespace string `json:"namespace,omitempty"`
 
+	// RolloutStrategy overrides the global rollout strategy for this specific workload
+	// +kubebuilder:validation:Enum=rollout;restart
+	// +optional
+	RolloutStrategy string `json:"rolloutStrategy,omitempty"`
+
 	// ReloadStrategy overrides the global reload strategy for this specific workload
-	// +kubebuilder:validation:Enum=env-vars;annotations;restart
+	// Only applies when RolloutStrategy is "rollout"
+	// +kubebuilder:validation:Enum=env-vars;annotations
 	// +optional
 	ReloadStrategy string `json:"reloadStrategy,omitempty"`
 

@@ -414,12 +414,17 @@ func (r *ReloaderConfigReconciler) mergeTargets(
 
 	// Add targets from ReloaderConfigs
 	for _, config := range configs {
+		// Get default strategies from config or global
+		defaultRolloutStrategy := util.GetDefaultRolloutStrategy(config.Spec.RolloutStrategy, r.RolloutStrategy)
+		defaultReloadStrategy := util.GetDefaultReloadStrategy(config.Spec.ReloadStrategy, r.ReloadStrategy)
+
 		for _, target := range config.Spec.Targets {
 			allTargets = append(allTargets, workload.Target{
 				Kind:             target.Kind,
 				Name:             target.Name,
 				Namespace:        util.GetDefaultNamespace(target.Namespace, config.Namespace),
-				ReloadStrategy:   util.GetDefaultStrategy(target.ReloadStrategy, config.Spec.ReloadStrategy),
+				RolloutStrategy:  util.GetDefaultRolloutStrategy(target.RolloutStrategy, defaultRolloutStrategy),
+				ReloadStrategy:   util.GetDefaultReloadStrategy(target.ReloadStrategy, defaultReloadStrategy),
 				PausePeriod:      target.PausePeriod,
 				RequireReference: target.RequireReference,
 				Config:           config,

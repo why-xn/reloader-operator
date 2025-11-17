@@ -896,7 +896,8 @@ type ReloaderConfigSpec struct {
 	WatchedConfigMaps    []string
 	EnableTargetedReload bool
 	Targets              []Target
-	ReloadStrategy       string
+	RolloutStrategy      string // How to deploy: "rollout" or "restart"
+	ReloadStrategy       string // How to modify template: "env-vars" or "annotations" (only when rollout)
 	AutoReloadAll        bool
 }
 
@@ -906,6 +907,8 @@ type Target struct {
 	Name             string
 	PausePeriod      string
 	RequireReference bool
+	RolloutStrategy  string // Override config-level rollout strategy
+	ReloadStrategy   string // Override config-level reload strategy
 }
 
 // GenerateReloaderConfig creates a ReloaderConfig YAML string
@@ -948,7 +951,17 @@ spec:
 			if target.RequireReference {
 				yaml += "    requireReference: true\n"
 			}
+			if target.RolloutStrategy != "" {
+				yaml += fmt.Sprintf("    rolloutStrategy: %s\n", target.RolloutStrategy)
+			}
+			if target.ReloadStrategy != "" {
+				yaml += fmt.Sprintf("    reloadStrategy: %s\n", target.ReloadStrategy)
+			}
 		}
+	}
+
+	if spec.RolloutStrategy != "" {
+		yaml += fmt.Sprintf("  rolloutStrategy: %s\n", spec.RolloutStrategy)
 	}
 
 	if spec.ReloadStrategy != "" {

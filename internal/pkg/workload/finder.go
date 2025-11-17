@@ -33,7 +33,8 @@ type Target struct {
 	Kind             string
 	Name             string
 	Namespace        string
-	ReloadStrategy   string
+	RolloutStrategy  string // How to deploy: "rollout" (modify template) or "restart" (delete pods)
+	ReloadStrategy   string // How to modify template: "env-vars" or "annotations" (only used when RolloutStrategy is "rollout")
 	PausePeriod      string
 	RequireReference bool                             // Whether this target requires pod spec reference for targeted reload
 	Config           *reloaderv1alpha1.ReloaderConfig // Reference to the ReloaderConfig that triggered this
@@ -236,19 +237,24 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 
 	for _, deploy := range deployments.Items {
 		if shouldReloadFromAnnotations(&deploy, resourceKind, resourceName, resourceAnnotations) {
-			strategy := util.GetDefaultStrategy(
-				deploy.Annotations[util.AnnotationReloadStrategy],
+			rolloutStrategy := util.GetDefaultRolloutStrategy(
+				deploy.Annotations[util.AnnotationRolloutStrategy],
+				util.RolloutStrategyRollout,
+			)
+			reloadStrategy := util.GetDefaultReloadStrategy(
+				"", // No annotation for reload strategy in annotation-based mode
 				util.ReloadStrategyEnvVars,
 			)
 			pausePeriod := deploy.Annotations[util.AnnotationDeploymentPausePeriod]
 
 			targets = append(targets, Target{
-				Kind:           util.KindDeployment,
-				Name:           deploy.Name,
-				Namespace:      deploy.Namespace,
-				ReloadStrategy: strategy,
-				PausePeriod:    pausePeriod,
-				Config:         nil, // No ReloaderConfig for annotation-based
+				Kind:            util.KindDeployment,
+				Name:            deploy.Name,
+				Namespace:       deploy.Namespace,
+				RolloutStrategy: rolloutStrategy,
+				ReloadStrategy:  reloadStrategy,
+				PausePeriod:     pausePeriod,
+				Config:          nil, // No ReloaderConfig for annotation-based
 			})
 
 			logger.V(1).Info("Found Deployment with annotations",
@@ -265,19 +271,24 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 
 	for _, sts := range statefulSets.Items {
 		if shouldReloadFromAnnotations(&sts, resourceKind, resourceName, resourceAnnotations) {
-			strategy := util.GetDefaultStrategy(
-				sts.Annotations[util.AnnotationReloadStrategy],
+			rolloutStrategy := util.GetDefaultRolloutStrategy(
+				sts.Annotations[util.AnnotationRolloutStrategy],
+				util.RolloutStrategyRollout,
+			)
+			reloadStrategy := util.GetDefaultReloadStrategy(
+				"", // No annotation for reload strategy in annotation-based mode
 				util.ReloadStrategyEnvVars,
 			)
 			pausePeriod := sts.Annotations[util.AnnotationStatefulSetPausePeriod]
 
 			targets = append(targets, Target{
-				Kind:           util.KindStatefulSet,
-				Name:           sts.Name,
-				Namespace:      sts.Namespace,
-				ReloadStrategy: strategy,
-				PausePeriod:    pausePeriod,
-				Config:         nil,
+				Kind:            util.KindStatefulSet,
+				Name:            sts.Name,
+				Namespace:       sts.Namespace,
+				RolloutStrategy: rolloutStrategy,
+				ReloadStrategy:  reloadStrategy,
+				PausePeriod:     pausePeriod,
+				Config:          nil,
 			})
 
 			logger.V(1).Info("Found StatefulSet with annotations",
@@ -294,19 +305,24 @@ func (f *Finder) FindWorkloadsWithAnnotations(
 
 	for _, ds := range daemonSets.Items {
 		if shouldReloadFromAnnotations(&ds, resourceKind, resourceName, resourceAnnotations) {
-			strategy := util.GetDefaultStrategy(
-				ds.Annotations[util.AnnotationReloadStrategy],
+			rolloutStrategy := util.GetDefaultRolloutStrategy(
+				ds.Annotations[util.AnnotationRolloutStrategy],
+				util.RolloutStrategyRollout,
+			)
+			reloadStrategy := util.GetDefaultReloadStrategy(
+				"", // No annotation for reload strategy in annotation-based mode
 				util.ReloadStrategyEnvVars,
 			)
 			pausePeriod := ds.Annotations[util.AnnotationDaemonSetPausePeriod]
 
 			targets = append(targets, Target{
-				Kind:           util.KindDaemonSet,
-				Name:           ds.Name,
-				Namespace:      ds.Namespace,
-				ReloadStrategy: strategy,
-				PausePeriod:    pausePeriod,
-				Config:         nil,
+				Kind:            util.KindDaemonSet,
+				Name:            ds.Name,
+				Namespace:       ds.Namespace,
+				RolloutStrategy: rolloutStrategy,
+				ReloadStrategy:  reloadStrategy,
+				PausePeriod:     pausePeriod,
+				Config:          nil,
 			})
 
 			logger.V(1).Info("Found DaemonSet with annotations",

@@ -155,7 +155,8 @@ spec:
 						RequireReference: true,
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -299,7 +300,8 @@ spec:
 						RequireReference: false, // No search - should reload for ANY watched secret
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 

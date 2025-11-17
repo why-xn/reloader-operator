@@ -518,6 +518,8 @@ var _ = Describe("Discovery Functions", func() {
 				Kind:             util.KindDeployment,
 				Name:             "test-targeted-reload",
 				Namespace:        "default",
+				RolloutStrategy:  util.RolloutStrategyRollout,
+				ReloadStrategy:   util.ReloadStrategyEnvVars,
 				RequireReference: true,
 				Config:           config,
 			}
@@ -546,6 +548,8 @@ var _ = Describe("Discovery Functions", func() {
 				Kind:             util.KindDeployment,
 				Name:             "any-deployment",
 				Namespace:        "default",
+				RolloutStrategy:  util.RolloutStrategyRollout,
+				ReloadStrategy:   util.ReloadStrategyEnvVars,
 				RequireReference: false, // Should not filter
 				Config:           config,
 			}
@@ -588,9 +592,11 @@ var _ = Describe("Discovery Functions", func() {
 
 			annotatedTargets := []workload.Target{
 				{
-					Kind:      util.KindDeployment,
-					Name:      "annotation-target",
-					Namespace: "default",
+					Kind:            util.KindDeployment,
+					Name:            "annotation-target",
+					Namespace:       "default",
+					RolloutStrategy: util.RolloutStrategyRollout,
+					ReloadStrategy:  util.ReloadStrategyEnvVars,
 				},
 			}
 

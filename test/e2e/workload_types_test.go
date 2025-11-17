@@ -80,7 +80,8 @@ var _ = Describe("Workload Types", Ordered, func() {
 						Name: statefulSetName,
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -157,7 +158,8 @@ var _ = Describe("Workload Types", Ordered, func() {
 						PausePeriod: "1m",
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -251,7 +253,8 @@ var _ = Describe("Workload Types", Ordered, func() {
 						Name: daemonSetName,
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 

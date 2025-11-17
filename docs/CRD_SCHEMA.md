@@ -23,7 +23,8 @@ The `spec` section defines the desired behavior of the reloader configuration.
 |-------|------|----------|---------|-------------|
 | `watchedResources` | [WatchedResources](#watchedresources) | No | - | Specifies which Secrets and ConfigMaps to monitor |
 | `targets` | [][TargetWorkload](#targetworkload) | No | - | Workloads to reload when watched resources change |
-| `reloadStrategy` | string | No | `env-vars` | How to trigger rolling updates (`env-vars` or `annotations`) |
+| `rolloutStrategy` | string | No | `rollout` | How to deploy changes (`rollout` or `restart`) |
+| `reloadStrategy` | string | No | `env-vars` | How to modify template when rollout (`env-vars` or `annotations`) |
 | `autoReloadAll` | boolean | No | `false` | Automatically reload on any referenced resource change |
 | `ignoreResources` | [][ResourceReference](#resourcereference) | No | - | Resources to ignore even if they match watch criteria |
 | `alerts` | [AlertConfiguration](#alertconfiguration) | No | - | Alert settings for reload notifications |
@@ -49,8 +50,10 @@ Defines a workload that should be reloaded.
 | `kind` | string | Yes | Workload type: `Deployment`, `StatefulSet`, `DaemonSet`, `DeploymentConfig`, `Rollout`, `CronJob` |
 | `name` | string | Yes | Name of the workload |
 | `namespace` | string | No | Namespace (defaults to ReloaderConfig's namespace) |
-| `reloadStrategy` | string | No | Override global reload strategy for this workload |
+| `rolloutStrategy` | string | No | Override global rollout strategy for this workload (`rollout` or `restart`) |
+| `reloadStrategy` | string | No | Override global reload strategy for this workload (`env-vars` or `annotations`) |
 | `pausePeriod` | string | No | Duration to prevent multiple reloads (e.g., `5m`, `1h`) |
+| `requireReference` | boolean | No | Only reload if workload references the changed resource (for targeted reload) |
 
 ### ResourceReference
 
@@ -119,11 +122,51 @@ Status of a specific target workload.
 | `pausedUntil` | Time | When pause period ends |
 | `lastError` | string | Error message if last reload failed |
 
-## Reload Strategies
+## Strategy System
 
-### env-vars (Default)
+The operator uses a **two-level strategy system**:
 
-Updates a dummy environment variable with the resource hash to trigger pod restart.
+### 1. Rollout Strategy (HOW to deploy)
+
+Controls the deployment mechanism for changes.
+
+#### `rollout` (Default)
+
+Modifies the pod template to trigger a Kubernetes rolling update.
+
+**Pros:**
+- Standard Kubernetes behavior
+- Changes visible in deployment spec
+- Predictable rollout process
+
+**Cons:**
+- Modifies deployment template
+- Can trigger drift detection in GitOps tools
+
+**When to use:** When you want standard Kubernetes rolling updates and don't mind template modifications.
+
+#### `restart`
+
+Deletes pods directly without modifying the pod template.
+
+**Pros:**
+- **Most GitOps-friendly** - no template changes
+- No drift detection in ArgoCD/Flux
+- Equivalent to `kubectl rollout restart`
+
+**Cons:**
+- Pods deleted immediately
+- Less visibility in deployment history
+
+**When to use:** When using GitOps tools and you want to avoid template modifications entirely.
+
+### 2. Reload Strategy (HOW to modify template)
+
+Controls how the pod template is modified when using `rollout` rollout strategy. **Ignored when using `restart` rollout strategy.**
+
+#### `env-vars` (Default)
+
+Adds/updates an environment variable with a timestamp.
 
 **Pros:**
 - Works with all Kubernetes versions
@@ -131,20 +174,35 @@ Updates a dummy environment variable with the resource hash to trigger pod resta
 - Immediate effect
 
 **Cons:**
-- Modifies pod spec with metadata
-- Less GitOps-friendly
+- Adds metadata to pod spec
+- Environment variable pollution
 
-### annotations
+**When to use:** Default choice for standard deployments.
+
+#### `annotations`
 
 Updates pod template annotations instead of environment variables.
 
 **Pros:**
-- GitOps-friendly (ArgoCD, Flux ignore annotation changes)
-- Cleaner pod spec
+- Cleaner pod spec - no environment variables
+- ArgoCD/Flux can ignore annotation changes with proper config
 - Better for declarative workflows
 
 **Cons:**
-- Requires annotation support in workload controller
+- Requires annotation support
+- Still modifies template (less GitOps-friendly than `restart` rollout strategy)
+
+**When to use:** When you want cleaner pod specs but are okay with template modifications.
+
+### Strategy Combinations
+
+| Rollout Strategy | Reload Strategy | Result | GitOps Friendly |
+|------------------|-----------------|--------|-----------------|
+| `rollout` (default) | `env-vars` (default) | Template modified with env var | ⚠️ No |
+| `rollout` | `annotations` | Template modified with annotation | ⚠️ Partial |
+| `restart` | (ignored) | Pods deleted directly | ✅ Yes |
+
+**Recommendation for GitOps:** Use `rolloutStrategy: restart` for maximum compatibility with ArgoCD/Flux.
 
 ## Mapping to Annotation-Based Configuration
 
@@ -188,6 +246,8 @@ spec:
     secrets:
       - db-creds
       - api-keys
+  rolloutStrategy: rollout  # How to deploy (rollout or restart)
+  reloadStrategy: env-vars  # How to modify template (env-vars or annotations)
   targets:
     - kind: Deployment
       name: my-app

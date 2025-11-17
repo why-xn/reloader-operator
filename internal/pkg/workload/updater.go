@@ -44,20 +44,32 @@ func NewUpdater(c client.Client) *Updater {
 func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceKind, resourceName, resourceNamespace, resourceHash string) error {
 	logger := log.FromContext(ctx)
 
-	strategy := target.ReloadStrategy
-	if strategy == "" {
-		strategy = util.ReloadStrategyEnvVars
+	// Default rollout strategy to "rollout" if not specified
+	rolloutStrategy := target.RolloutStrategy
+	if rolloutStrategy == "" {
+		rolloutStrategy = util.RolloutStrategyRollout
 	}
-
-	// Normalize strategy for backward compatibility (e.g., "rollout" -> "env-vars")
-	strategy = util.NormalizeStrategy(strategy)
 
 	logger.Info("Triggering reload",
 		"kind", target.Kind,
 		"name", target.Name,
 		"namespace", target.Namespace,
-		"strategy", strategy,
+		"rolloutStrategy", rolloutStrategy,
+		"reloadStrategy", target.ReloadStrategy,
 		"triggerResource", fmt.Sprintf("%s/%s", resourceKind, resourceName))
+
+	// Check rollout strategy first
+	if rolloutStrategy == util.RolloutStrategyRestart {
+		// Restart strategy: Delete pods directly without modifying template
+		return u.triggerRestartRollout(ctx, target)
+	}
+
+	// Rollout strategy: Modify template based on reload strategy
+	// Default reload strategy to "env-vars" if not specified
+	reloadStrategy := target.ReloadStrategy
+	if reloadStrategy == "" {
+		reloadStrategy = util.ReloadStrategyEnvVars
+	}
 
 	// Create reload source JSON annotation
 	reloadSourceJSON := util.CreateReloadSourceAnnotation(resourceKind, resourceName, resourceNamespace, resourceHash)
@@ -65,13 +77,13 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceKind
 	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		err = u.reloadDeployment(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
+		err = u.reloadDeployment(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
 
 	case util.KindStatefulSet:
-		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
+		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
 
 	case util.KindDaemonSet:
-		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
+		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy, reloadSourceJSON)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
@@ -90,42 +102,85 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceKind
 	return err
 }
 
+// triggerRestartRollout handles the restart rollout strategy by deleting pods directly
+func (u *Updater) triggerRestartRollout(ctx context.Context, target Target) error {
+	logger := log.FromContext(ctx)
+
+	// Get the workload to access its selector
+	obj, err := u.getWorkload(ctx, target)
+	if err != nil {
+		return err
+	}
+
+	var selector *metav1.LabelSelector
+	switch target.Kind {
+	case util.KindDeployment:
+		deployment := obj.(*appsv1.Deployment)
+		selector = deployment.Spec.Selector
+	case util.KindStatefulSet:
+		statefulSet := obj.(*appsv1.StatefulSet)
+		selector = statefulSet.Spec.Selector
+	case util.KindDaemonSet:
+		daemonSet := obj.(*appsv1.DaemonSet)
+		selector = daemonSet.Spec.Selector
+	default:
+		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
+	}
+
+	logger.Info("Using restart rollout strategy - deleting pods",
+		"kind", target.Kind,
+		"name", target.Name,
+		"namespace", target.Namespace)
+
+	return u.restartWorkloadPods(ctx, selector, target.Namespace, target.Kind, target.Name)
+}
+
 // TriggerDeleteReload handles workload reload when a Secret/ConfigMap is deleted
 //
 // Business Logic:
-// When a Secret/ConfigMap is deleted, we use the delete strategy:
-// - env-vars strategy: REMOVE the RELOADER_TRIGGERED_AT environment variable
-// - annotations strategy: Set the annotation to a hash of empty data
-//
-// This triggers a pod restart to reflect the resource deletion.
+// When a Secret/ConfigMap is deleted:
+// - If rollout strategy is "restart": Delete pods directly
+// - If rollout strategy is "rollout": Modify template to trigger reload
+//   - env-vars strategy: Update RELOADER_TRIGGERED_AT environment variable
+//   - annotations strategy: Update pod template annotation
 func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resourceKind, resourceName string) error {
 	logger := log.FromContext(ctx)
 
-	strategy := target.ReloadStrategy
-	if strategy == "" {
-		strategy = util.ReloadStrategyEnvVars
+	// Default rollout strategy to "rollout" if not specified
+	rolloutStrategy := target.RolloutStrategy
+	if rolloutStrategy == "" {
+		rolloutStrategy = util.RolloutStrategyRollout
 	}
-
-	// Normalize strategy for backward compatibility
-	strategy = util.NormalizeStrategy(strategy)
 
 	logger.Info("Triggering delete reload",
 		"kind", target.Kind,
 		"name", target.Name,
 		"namespace", target.Namespace,
-		"strategy", strategy,
+		"rolloutStrategy", rolloutStrategy,
 		"deletedResource", fmt.Sprintf("%s/%s", resourceKind, resourceName))
+
+	// Check rollout strategy first
+	if rolloutStrategy == util.RolloutStrategyRestart {
+		// Restart strategy: Delete pods directly without modifying template
+		return u.triggerRestartRollout(ctx, target)
+	}
+
+	// Rollout strategy: Modify template based on reload strategy
+	reloadStrategy := target.ReloadStrategy
+	if reloadStrategy == "" {
+		reloadStrategy = util.ReloadStrategyEnvVars
+	}
 
 	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		err = u.reloadDeleteDeployment(ctx, target.Name, target.Namespace, strategy)
+		err = u.reloadDeleteDeployment(ctx, target.Name, target.Namespace, reloadStrategy)
 
 	case util.KindStatefulSet:
-		err = u.reloadDeleteStatefulSet(ctx, target.Name, target.Namespace, strategy)
+		err = u.reloadDeleteStatefulSet(ctx, target.Name, target.Namespace, reloadStrategy)
 
 	case util.KindDaemonSet:
-		err = u.reloadDeleteDaemonSet(ctx, target.Name, target.Namespace, strategy)
+		err = u.reloadDeleteDaemonSet(ctx, target.Name, target.Namespace, reloadStrategy)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
@@ -156,11 +211,6 @@ func (u *Updater) reloadDeployment(
 
 	if err := u.Get(ctx, key, deployment); err != nil {
 		return fmt.Errorf("failed to get Deployment: %w", err)
-	}
-
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, deployment.Spec.Selector, namespace, "Deployment", name)
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
@@ -194,11 +244,6 @@ func (u *Updater) reloadStatefulSet(
 		return fmt.Errorf("failed to get StatefulSet: %w", err)
 	}
 
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, statefulSet.Spec.Selector, namespace, "StatefulSet", name)
-	}
-
 	// Apply the reload strategy (env-vars or annotations)
 	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, reloadSourceJSON); err != nil {
 		return err
@@ -228,11 +273,6 @@ func (u *Updater) reloadDaemonSet(
 
 	if err := u.Get(ctx, key, daemonSet); err != nil {
 		return fmt.Errorf("failed to get DaemonSet: %w", err)
-	}
-
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, daemonSet.Spec.Selector, namespace, "DaemonSet", name)
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
@@ -266,11 +306,6 @@ func (u *Updater) reloadDeleteDeployment(
 		return fmt.Errorf("failed to get Deployment: %w", err)
 	}
 
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, deployment.Spec.Selector, namespace, "Deployment", name)
-	}
-
 	// Apply the delete strategy (remove env var or set empty hash annotation)
 	if err := applyDeleteStrategy(&deployment.Spec.Template, strategy); err != nil {
 		return err
@@ -302,11 +337,6 @@ func (u *Updater) reloadDeleteStatefulSet(
 		return fmt.Errorf("failed to get StatefulSet: %w", err)
 	}
 
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, statefulSet.Spec.Selector, namespace, "StatefulSet", name)
-	}
-
 	// Apply the delete strategy
 	if err := applyDeleteStrategy(&statefulSet.Spec.Template, strategy); err != nil {
 		return err
@@ -336,11 +366,6 @@ func (u *Updater) reloadDeleteDaemonSet(
 
 	if err := u.Get(ctx, key, daemonSet); err != nil {
 		return fmt.Errorf("failed to get DaemonSet: %w", err)
-	}
-
-	// For restart strategy, delete pods instead of updating template
-	if strategy == util.ReloadStrategyRestart {
-		return u.restartWorkloadPods(ctx, daemonSet.Spec.Selector, namespace, "DaemonSet", name)
 	}
 
 	// Apply the delete strategy

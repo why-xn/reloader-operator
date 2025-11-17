@@ -85,7 +85,8 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 						Name: deploymentName,
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -195,7 +196,8 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 						Name: deploymentName,
 					},
 				},
-				ReloadStrategy: "env-vars",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "env-vars",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -286,7 +288,8 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 						Name: statefulSetName,
 					},
 				},
-				ReloadStrategy: "annotations",
+				RolloutStrategy: "rollout",
+				ReloadStrategy:  "annotations",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
@@ -494,7 +497,7 @@ var _ = Describe("ReloaderConfig", Ordered, func() {
 						Name: deploymentName,
 					},
 				},
-				ReloadStrategy: "restart",
+				RolloutStrategy: "restart",
 			})
 			Expect(utils.ApplyYAML(reloaderConfigYAML)).To(Succeed())
 
