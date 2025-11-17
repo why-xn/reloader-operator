@@ -17,7 +17,7 @@ Reloader Operator is a modern rewrite of [Stakater Reloader](https://github.com/
     - `rollout`: Modify pod template to trigger rolling update (default)
     - `restart`: Delete pods directly without template changes (GitOps-friendly)
   - **Reload Strategy** (HOW to modify template when using rollout):
-    - `env-vars`: Inject environment variable with timestamp (default)
+    - `env-vars`: Inject resource-specific environment variables with hash values (default)
     - `annotations`: Update pod template annotations only
 - **Namespace Filtering**: Filter which namespaces to watch using label selectors or ignore lists
 - **Resource Filtering**: Filter ConfigMaps/Secrets using label selectors

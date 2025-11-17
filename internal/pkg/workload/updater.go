@@ -141,7 +141,7 @@ func (u *Updater) triggerRestartRollout(ctx context.Context, target Target) erro
 // When a Secret/ConfigMap is deleted:
 // - If rollout strategy is "restart": Delete pods directly
 // - If rollout strategy is "rollout": Modify template to trigger reload
-//   - env-vars strategy: Update RELOADER_TRIGGERED_AT environment variable
+//   - env-vars strategy: Update resource-specific environment variable (e.g., STAKATER_DB_CREDENTIALS_SECRET)
 //   - annotations strategy: Update pod template annotation
 func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resourceKind, resourceName string) error {
 	logger := log.FromContext(ctx)
@@ -413,8 +413,8 @@ func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, resourceKind, resour
 	}
 
 	// Generate the environment variable name based on the resource
-	// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
-	// Example: RELOADER_SECRET_DB_CREDENTIALS or RELOADER_CONFIGMAP_APP_CONFIG
+	// Format: STAKATER_<RESOURCE_NAME>_<TYPE>
+	// Example: STAKATER_DB_CREDENTIALS_SECRET or STAKATER_APP_CONFIG_CONFIGMAP
 	envVarName := util.GetEnvVarName(resourceKind, resourceName)
 
 	// Update the first container's environment variable
@@ -486,8 +486,8 @@ func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, resourceKind, 
 	}
 
 	// Generate the environment variable name based on the resource
-	// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
-	// Example: RELOADER_SECRET_DB_CREDENTIALS or RELOADER_CONFIGMAP_APP_CONFIG
+	// Format: STAKATER_<RESOURCE_NAME>_<TYPE>
+	// Example: STAKATER_DB_CREDENTIALS_SECRET or STAKATER_APP_CONFIG_CONFIGMAP
 	envVarName := util.GetEnvVarName(resourceKind, resourceName)
 
 	// Set the resource-specific env var to "deleted" marker to trigger a restart

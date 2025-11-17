@@ -41,7 +41,7 @@ import (
 // 2. Trigger Reload:
 //   - Calls WorkloadUpdater.TriggerReload() which updates the workload
 //   - Two strategies available:
-//   - env-vars: Updates RELOADER_TRIGGERED_AT env var (forces pod restart)
+//   - env-vars: Updates resource-specific env var (e.g., STAKATER_DB_CREDENTIALS_SECRET) (forces pod restart)
 //   - annotations: Updates pod template annotation (GitOps-friendly)
 //
 // 3. Alert Handling:

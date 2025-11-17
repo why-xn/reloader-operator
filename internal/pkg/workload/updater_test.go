@@ -89,7 +89,7 @@ func TestTriggerReloadEnvVarsStrategy(t *testing.T) {
 	}
 
 	// Check that the resource-specific env var was added
-	// For Secret "db-secret", the expected env var is RELOADER_SECRET_DB_SECRET
+	// For Secret "db-secret", the expected env var is STAKATER_DB_SECRET_SECRET
 	expectedEnvVar := util.GetEnvVarName(util.KindSecret, "db-secret")
 	found := false
 	var foundValue string
@@ -195,11 +195,11 @@ func TestTriggerReloadAnnotationsStrategy(t *testing.T) {
 	}
 
 	// Check that no reloader env vars were added (annotations strategy)
-	// The expected env var for ConfigMap "app-config" would be RELOADER_CONFIGMAP_APP_CONFIG
+	// The expected env var for ConfigMap "app-config" would be STAKATER_APP_CONFIG_CONFIGMAP
 	expectedEnvVar := util.GetEnvVarName(util.KindConfigMap, "app-config")
 	for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
 		for _, env := range container.Env {
-			if env.Name == expectedEnvVar || strings.HasPrefix(env.Name, "RELOADER_") {
+			if env.Name == expectedEnvVar || strings.HasPrefix(env.Name, "STAKATER_") {
 				t.Errorf("env-vars strategy should not be used when annotations strategy is specified, found: %s", env.Name)
 			}
 		}
@@ -263,7 +263,7 @@ func TestTriggerReloadStatefulSet(t *testing.T) {
 	}
 
 	// Check that the resource-specific env var was added
-	// For Secret "redis-secret", the expected env var is RELOADER_SECRET_REDIS_SECRET
+	// For Secret "redis-secret", the expected env var is STAKATER_REDIS_SECRET_SECRET
 	expectedEnvVar := util.GetEnvVarName(util.KindSecret, "redis-secret")
 	found := false
 	var foundValue string
@@ -342,7 +342,7 @@ func TestTriggerReloadDaemonSet(t *testing.T) {
 	}
 
 	// Check that the resource-specific env var was added
-	// For ConfigMap "fluentd-config", the expected env var is RELOADER_CONFIGMAP_FLUENTD_CONFIG
+	// For ConfigMap "fluentd-config", the expected env var is STAKATER_FLUENTD_CONFIG_CONFIGMAP
 	expectedEnvVar := util.GetEnvVarName(util.KindConfigMap, "fluentd-config")
 	found := false
 	var foundValue string
@@ -513,7 +513,7 @@ func TestTriggerReloadRestartStrategy(t *testing.T) {
 	// Check that no reloader env vars were added (restart strategy doesn't modify template)
 	for _, container := range updatedDeployment.Spec.Template.Spec.Containers {
 		for _, env := range container.Env {
-			if strings.HasPrefix(env.Name, "RELOADER_") {
+			if strings.HasPrefix(env.Name, "STAKATER_") {
 				t.Errorf("restart strategy should not modify pod template with env vars, found: %s", env.Name)
 			}
 		}
@@ -599,7 +599,7 @@ func TestTriggerReloadDefaultReloadStrategy(t *testing.T) {
 	}
 
 	// Check that resource-specific env var was added (default reload strategy is env-vars)
-	// For ConfigMap "nginx-config", the expected env var is RELOADER_CONFIGMAP_NGINX_CONFIG
+	// For ConfigMap "nginx-config", the expected env var is STAKATER_NGINX_CONFIG_CONFIGMAP
 	expectedEnvVar := util.GetEnvVarName(util.KindConfigMap, "nginx-config")
 	found := false
 	var foundValue string

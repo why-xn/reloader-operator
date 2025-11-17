@@ -44,7 +44,7 @@ type ReloaderConfigSpec struct {
 
 	// ReloadStrategy specifies how to modify pod template when RolloutStrategy is "rollout"
 	// Valid values are: "env-vars" (default), "annotations"
-	// - env-vars: Updates RELOADER_TRIGGERED_AT environment variable
+	// - env-vars: Updates resource-specific environment variable (e.g., STAKATER_DB_CREDENTIALS_SECRET)
 	// - annotations: Updates pod template annotations (better for GitOps)
 	// This field is ignored when RolloutStrategy is "restart"
 	// +kubebuilder:validation:Enum=env-vars;annotations

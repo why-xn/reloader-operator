@@ -279,7 +279,7 @@ var _ = Describe("ReloaderConfig Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			// Verify deployment was reloaded (resource-specific env var added)
-			// For Secret "test-secret1", the expected env var is RELOADER_SECRET_TEST_SECRET1
+			// For Secret "test-secret1", the expected env var is STAKATER_TEST_SECRET1_SECRET
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "test-app-secret1",
@@ -376,8 +376,8 @@ var _ = Describe("ReloaderConfig Controller", func() {
 			// No reloader env vars should be present (no reload should have been triggered)
 			for _, container := range deployment.Spec.Template.Spec.Containers {
 				for _, env := range container.Env {
-					Expect(env.Name).NotTo(HavePrefix("RELOADER_"),
-						"No RELOADER_* env vars should be present since data didn't change")
+					Expect(env.Name).NotTo(HavePrefix("STAKATER_"),
+						"No STAKATER_* env vars should be present since data didn't change")
 				}
 			}
 		})
@@ -449,7 +449,7 @@ var _ = Describe("ReloaderConfig Controller", func() {
 			}, timeout, interval).Should(Succeed())
 
 			// Verify deployment was reloaded (resource-specific env var added)
-			// For Secret "annotated-secret", the expected env var is RELOADER_SECRET_ANNOTATED_SECRET
+			// For Secret "annotated-secret", the expected env var is STAKATER_ANNOTATED_SECRET_SECRET
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "annotated-app",

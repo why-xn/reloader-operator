@@ -339,21 +339,33 @@ Control how the operator triggers pod restarts.
 ### `env-vars` (Default)
 
 **How it works:**
-Adds/updates an environment variable in the pod template:
+Adds/updates a resource-specific environment variable in the pod template:
 ```yaml
 env:
-- name: RELOADER_TRIGGERED_AT
-  value: "2025-11-16T10:30:00Z"
+# For Secret "db-credentials"
+- name: STAKATER_DB_CREDENTIALS_SECRET
+  value: "a1b2c3d4..."  # hash of the Secret
+
+# For ConfigMap "app-config"
+- name: STAKATER_APP_CONFIG_CONFIGMAP
+  value: "e5f6g7h8..."  # hash of the ConfigMap
 ```
+
+**Format:** `STAKATER_<RESOURCE_NAME>_<TYPE>=<hash>`
+- Resource names are converted to valid env var names (uppercase, special chars → underscores)
+- Value is the resource's hash, not a timestamp
+- Each watched resource gets its own environment variable
 
 **Pros:**
 - Works with all Kubernetes versions
 - Reliable pod restart trigger
-- Clear audit trail (can see when reload happened)
+- Clear audit trail (can see which specific resource triggered reload)
+- Matches original Reloader behavior
 
 **Cons:**
 - Changes pod template spec
 - May trigger ArgoCD/Flux drift detection
+- Adds environment variables (one per watched resource)
 
 **Configuration:**
 ```yaml

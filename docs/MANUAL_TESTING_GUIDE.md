@@ -977,14 +977,19 @@ kubectl wait --for=condition=available --timeout=60s deployment/envvars-strategy
 kubectl patch configmap strategy-test-config -p '{"data":{"data":"value2"}}'
 ```
 
-4. Check for RELOADER_TRIGGERED_AT environment variable:
+4. Check for resource-specific environment variable:
 ```bash
 sleep 10
-kubectl get deployment envvars-strategy-app -o jsonpath='{.spec.template.spec.containers[0].env}' | grep RELOADER_TRIGGERED_AT
-echo "env-vars strategy - RELOADER_TRIGGERED_AT found: $([[ $? -eq 0 ]] && echo "✅ YES" || echo "❌ NO")"
+# For ConfigMap "strategy-test-config", the env var is STAKATER_STRATEGY_TEST_CONFIG_CONFIGMAP
+kubectl get deployment envvars-strategy-app -o jsonpath='{.spec.template.spec.containers[0].env}' | grep STAKATER_STRATEGY_TEST_CONFIG_CONFIGMAP
+echo "env-vars strategy - STAKATER_STRATEGY_TEST_CONFIG_CONFIGMAP found: $([[ $? -eq 0 ]] && echo "✅ YES" || echo "❌ NO")"
+
+# Verify the value is a hash (not a timestamp)
+ENV_VALUE=$(kubectl get deployment envvars-strategy-app -o jsonpath='{.spec.template.spec.containers[0].env[?(@.name=="STAKATER_STRATEGY_TEST_CONFIG_CONFIGMAP")].value}')
+echo "Environment variable value: $ENV_VALUE (should be a hash)"
 ```
 
-**Expected Result**: ✅ Should find RELOADER_TRIGGERED_AT environment variable
+**Expected Result**: ✅ Should find STAKATER_STRATEGY_TEST_CONFIG_CONFIGMAP environment variable with hash value
 
 **Cleanup**:
 ```bash

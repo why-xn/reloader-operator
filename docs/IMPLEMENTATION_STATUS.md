@@ -159,7 +159,7 @@ Reloader-Operator/
 ## Phase 4: Reload Strategies ✅
 
 ### What's Been Implemented
-- ✅ `env-vars` strategy - Inject RELOADER_TRIGGERED_AT environment variable
+- ✅ `env-vars` strategy - Inject resource-specific environment variables (e.g., `STAKATER_DB_CREDENTIALS_SECRET=<hash>`)
 - ✅ `annotations` strategy - Update pod template annotations (GitOps-friendly)
 - ✅ `restart` strategy - Delete pods without template changes
 - ✅ Workload update executor
@@ -168,8 +168,8 @@ Reloader-Operator/
 
 **Code Location:**
 - Strategy implementation: `internal/pkg/workload/updater.go`
-- env-vars strategy: Lines 72-133
-- annotations strategy: Lines 135-196
+- env-vars strategy: Lines 407-441 (dynamic env var naming)
+- annotations strategy: Lines 443-454
 - restart strategy: Lines 282-345
 
 ## Phase 5: Advanced Features ✅

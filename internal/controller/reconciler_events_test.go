@@ -392,7 +392,7 @@ var _ = Describe("Event Handlers", func() {
 			}, timeout, interval).Should(Succeed())
 
 			// Verify deployment was reloaded (resource-specific env var added)
-			// For ConfigMap "test-configmap", the expected env var is RELOADER_CONFIGMAP_TEST_CONFIGMAP
+			// For ConfigMap "test-configmap", the expected env var is STAKATER_TEST_CONFIGMAP_CONFIGMAP
 			Eventually(func() bool {
 				err := k8sClient.Get(ctx, types.NamespacedName{
 					Name:      "test-app-cm-reload",

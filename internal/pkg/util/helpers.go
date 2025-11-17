@@ -46,7 +46,7 @@ const (
 	AnnotationDaemonSetPausePeriod   = "daemonset.reloader.stakater.com/pause-period"
 
 	// Environment variable prefix for reload triggers
-	EnvVarPrefix = "RELOADER_"
+	EnvVarPrefix = "STAKATER_"
 )
 
 // Resource kinds supported by Reloader
@@ -69,7 +69,7 @@ const (
 
 // Reload strategies (how to modify template when rollout strategy is "rollout")
 const (
-	ReloadStrategyEnvVars     = "env-vars"    // Update environment variable based on resource (e.g., RELOADER_SECRET_DB_CREDENTIALS)
+	ReloadStrategyEnvVars     = "env-vars"    // Update environment variable based on resource (e.g., STAKATER_DB_CREDENTIALS_SECRET)
 	ReloadStrategyAnnotations = "annotations" // Update pod template annotations
 )
 
@@ -246,12 +246,12 @@ func ConvertToEnvVarName(name string) string {
 }
 
 // GetEnvVarName generates the environment variable name for a resource
-// Format: RELOADER_<TYPE>_<RESOURCE_NAME>
+// Format: STAKATER_<RESOURCE_NAME>_<TYPE>
 // Examples:
-//   - Secret "db-credentials" -> "RELOADER_SECRET_DB_CREDENTIALS"
-//   - ConfigMap "app-config" -> "RELOADER_CONFIGMAP_APP_CONFIG"
+//   - Secret "db-credentials" -> "STAKATER_DB_CREDENTIALS_SECRET"
+//   - ConfigMap "app-config" -> "STAKATER_APP_CONFIG_CONFIGMAP"
 func GetEnvVarName(resourceKind, resourceName string) string {
 	typeName := strings.ToUpper(resourceKind)
 	envVarName := ConvertToEnvVarName(resourceName)
-	return EnvVarPrefix + typeName + "_" + envVarName
+	return EnvVarPrefix + envVarName + "_" + typeName
 }

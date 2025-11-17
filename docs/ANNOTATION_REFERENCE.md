@@ -538,15 +538,21 @@ metadata:
 **Reload Strategies:**
 
 1. **`env-vars` (default)** - ✅ Supported
-   - Adds/updates environment variable: `RELOADER_TRIGGERED_AT=<timestamp>`
+   - Adds/updates resource-specific environment variable: `STAKATER_<RESOURCE_NAME>_<TYPE>=<hash>`
+   - Examples: `STAKATER_DB_CREDENTIALS_SECRET=abc123`, `STAKATER_APP_CONFIG_CONFIGMAP=def456`
+   - Value is the resource's hash (not timestamp)
    - Forces pod restart via spec change
    - Works with all Kubernetes versions
    - Template modification visible in deployment spec
+   - **No annotations added** - only environment variables
 
 2. **`annotations`** - ✅ Supported
-   - Updates pod template annotation: `reloader.stakater.com/last-reloaded-from=<json>`
+   - Updates pod template annotations:
+     - `reloader.stakater.com/last-reload=<timestamp>`
+     - `reloader.stakater.com/last-reloaded-from=<json>`
    - GitOps-friendly when using `rollout` (ArgoCD/Flux can ignore annotation changes)
    - Cleaner pod spec - no environment variable pollution
+   - **No environment variables added** - only annotations
    - **Note:** For maximum GitOps compatibility, use `rollout-strategy: restart` instead
 
 **Example (CRD):**
