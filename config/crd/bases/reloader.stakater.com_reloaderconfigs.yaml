@@ -218,14 +218,6 @@ spec:
                   MatchLabels enables label-based matching for resources
                   Resources must have matching labels to trigger reload
                 type: object
-              reloadOnCreate:
-                description: ReloadOnCreate triggers reload when watched resources
-                  are created
-                type: boolean
-              reloadOnDelete:
-                description: ReloadOnDelete triggers reload when watched resources
-                  are deleted
-                type: boolean
               reloadStrategy:
                 default: env-vars
                 description: |-

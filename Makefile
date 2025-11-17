@@ -147,7 +147,7 @@ e2e-cleanup: ## Stage 3: Cleanup E2E environment (undeploy operator, delete Kind
 	@echo "========================================="
 
 .PHONY: e2e-all
-e2e-all: e2e-setup e2e-test e2e-cleanup ## Run all E2E stages: setup, test, and cleanup
+e2e-all: e2e-test e2e-test-label-selector e2e-test-namespace-selector e2e-test-reload-on-create-delete
 
 .PHONY: e2e-reset
 e2e-reset: ## Reset test namespace without destroying cluster

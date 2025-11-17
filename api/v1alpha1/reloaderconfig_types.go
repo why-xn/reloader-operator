@@ -48,14 +48,6 @@ type ReloaderConfigSpec struct {
 	// +optional
 	AutoReloadAll bool `json:"autoReloadAll,omitempty"`
 
-	// ReloadOnCreate triggers reload when watched resources are created
-	// +optional
-	ReloadOnCreate bool `json:"reloadOnCreate,omitempty"`
-
-	// ReloadOnDelete triggers reload when watched resources are deleted
-	// +optional
-	ReloadOnDelete bool `json:"reloadOnDelete,omitempty"`
-
 	// IgnoreResources specifies resources that should be ignored even if they match watch criteria
 	// +optional
 	IgnoreResources []ResourceReference `json:"ignoreResources,omitempty"`
