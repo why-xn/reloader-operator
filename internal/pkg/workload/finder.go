@@ -171,53 +171,10 @@ func (f *Finder) workloadReferencesResource(
 
 // podTemplateReferencesResource checks if a pod template references a resource
 func podTemplateReferencesResource(template *corev1.PodTemplateSpec, resourceKind, resourceName string) bool {
-	// Check volumes
-	for _, volume := range template.Spec.Volumes {
-		if resourceKind == util.KindSecret && volume.Secret != nil && volume.Secret.SecretName == resourceName {
-			return true
-		}
-		if resourceKind == util.KindConfigMap && volume.ConfigMap != nil && volume.ConfigMap.Name == resourceName {
-			return true
-		}
+	if template == nil {
+		return false
 	}
-
-	// Check envFrom in all containers
-	for _, container := range template.Spec.Containers {
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil && envFrom.SecretRef.Name == resourceName {
-				return true
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil && envFrom.ConfigMapRef.Name == resourceName {
-				return true
-			}
-		}
-
-		// Check env (individual keys)
-		for _, env := range container.Env {
-			if env.ValueFrom != nil {
-				if resourceKind == util.KindSecret && env.ValueFrom.SecretKeyRef != nil && env.ValueFrom.SecretKeyRef.Name == resourceName {
-					return true
-				}
-				if resourceKind == util.KindConfigMap && env.ValueFrom.ConfigMapKeyRef != nil && env.ValueFrom.ConfigMapKeyRef.Name == resourceName {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check init containers
-	for _, container := range template.Spec.InitContainers {
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil && envFrom.SecretRef.Name == resourceName {
-				return true
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil && envFrom.ConfigMapRef.Name == resourceName {
-				return true
-			}
-		}
-	}
-
-	return false
+	return util.CheckPodSpecReferencesResource(&template.Spec, resourceKind, resourceName)
 }
 
 // FindWorkloadsWithAnnotations finds workloads that have annotation-based reload config
@@ -412,81 +369,5 @@ func shouldReloadFromAnnotations(obj client.Object, resourceKind, resourceName s
 
 // workloadReferencesResource checks if a pod spec references a specific resource
 func workloadReferencesResource(podSpec *corev1.PodSpec, resourceKind, resourceName string) bool {
-	// Check environment variables
-	for _, container := range podSpec.Containers {
-		for _, env := range container.Env {
-			if env.ValueFrom != nil {
-				if resourceKind == util.KindSecret && env.ValueFrom.SecretKeyRef != nil {
-					if env.ValueFrom.SecretKeyRef.Name == resourceName {
-						return true
-					}
-				}
-				if resourceKind == util.KindConfigMap && env.ValueFrom.ConfigMapKeyRef != nil {
-					if env.ValueFrom.ConfigMapKeyRef.Name == resourceName {
-						return true
-					}
-				}
-			}
-		}
-		// Check envFrom
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil {
-				if envFrom.SecretRef.Name == resourceName {
-					return true
-				}
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil {
-				if envFrom.ConfigMapRef.Name == resourceName {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check init containers
-	for _, container := range podSpec.InitContainers {
-		for _, env := range container.Env {
-			if env.ValueFrom != nil {
-				if resourceKind == util.KindSecret && env.ValueFrom.SecretKeyRef != nil {
-					if env.ValueFrom.SecretKeyRef.Name == resourceName {
-						return true
-					}
-				}
-				if resourceKind == util.KindConfigMap && env.ValueFrom.ConfigMapKeyRef != nil {
-					if env.ValueFrom.ConfigMapKeyRef.Name == resourceName {
-						return true
-					}
-				}
-			}
-		}
-		// Check envFrom
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil {
-				if envFrom.SecretRef.Name == resourceName {
-					return true
-				}
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil {
-				if envFrom.ConfigMapRef.Name == resourceName {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check volumes
-	for _, volume := range podSpec.Volumes {
-		if resourceKind == util.KindSecret && volume.Secret != nil {
-			if volume.Secret.SecretName == resourceName {
-				return true
-			}
-		}
-		if resourceKind == util.KindConfigMap && volume.ConfigMap != nil {
-			if volume.ConfigMap.Name == resourceName {
-				return true
-			}
-		}
-	}
-
-	return false
+	return util.CheckPodSpecReferencesResource(podSpec, resourceKind, resourceName)
 }

@@ -18,9 +18,7 @@ package controller
 
 import (
 	"context"
-	"fmt"
 
-	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/labels"
 	"sigs.k8s.io/controller-runtime/pkg/client"
@@ -229,38 +227,16 @@ func (r *ReloaderConfigReconciler) workloadReferencesResource(
 	resourceKind string,
 	resourceName string,
 ) (bool, error) {
-	// Fetch the workload to get its pod spec
-	var podSpec *corev1.PodSpec
-
-	key := client.ObjectKey{
-		Name:      target.Name,
-		Namespace: target.Namespace,
+	// Fetch the workload using consolidated utility function
+	obj, err := util.GetWorkload(ctx, r.Client, target.Kind, target.Name, target.Namespace)
+	if err != nil {
+		return false, err
 	}
 
-	switch target.Kind {
-	case util.KindDeployment:
-		deployment := &appsv1.Deployment{}
-		if err := r.Get(ctx, key, deployment); err != nil {
-			return false, err
-		}
-		podSpec = &deployment.Spec.Template.Spec
-
-	case util.KindStatefulSet:
-		sts := &appsv1.StatefulSet{}
-		if err := r.Get(ctx, key, sts); err != nil {
-			return false, err
-		}
-		podSpec = &sts.Spec.Template.Spec
-
-	case util.KindDaemonSet:
-		ds := &appsv1.DaemonSet{}
-		if err := r.Get(ctx, key, ds); err != nil {
-			return false, err
-		}
-		podSpec = &ds.Spec.Template.Spec
-
-	default:
-		return false, fmt.Errorf("unsupported workload kind: %s", target.Kind)
+	// Extract pod spec using consolidated utility function
+	podSpec, err := util.GetPodSpec(obj)
+	if err != nil {
+		return false, err
 	}
 
 	// Check if pod spec references the resource
@@ -270,113 +246,12 @@ func (r *ReloaderConfigReconciler) workloadReferencesResource(
 // workloadPodSpecReferencesResource checks if a pod spec references a specific resource
 // This is the same logic used in annotation-based targeted reload
 func workloadPodSpecReferencesResource(podSpec *corev1.PodSpec, resourceKind, resourceName string) bool {
-	if podSpec == nil {
-		return false
-	}
-
-	// Check environment variables in all containers
-	for _, container := range podSpec.Containers {
-		for _, env := range container.Env {
-			if env.ValueFrom != nil {
-				if resourceKind == util.KindSecret && env.ValueFrom.SecretKeyRef != nil {
-					if env.ValueFrom.SecretKeyRef.Name == resourceName {
-						return true
-					}
-				}
-				if resourceKind == util.KindConfigMap && env.ValueFrom.ConfigMapKeyRef != nil {
-					if env.ValueFrom.ConfigMapKeyRef.Name == resourceName {
-						return true
-					}
-				}
-			}
-		}
-
-		// Check envFrom
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil {
-				if envFrom.SecretRef.Name == resourceName {
-					return true
-				}
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil {
-				if envFrom.ConfigMapRef.Name == resourceName {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check init containers
-	for _, container := range podSpec.InitContainers {
-		for _, env := range container.Env {
-			if env.ValueFrom != nil {
-				if resourceKind == util.KindSecret && env.ValueFrom.SecretKeyRef != nil {
-					if env.ValueFrom.SecretKeyRef.Name == resourceName {
-						return true
-					}
-				}
-				if resourceKind == util.KindConfigMap && env.ValueFrom.ConfigMapKeyRef != nil {
-					if env.ValueFrom.ConfigMapKeyRef.Name == resourceName {
-						return true
-					}
-				}
-			}
-		}
-
-		for _, envFrom := range container.EnvFrom {
-			if resourceKind == util.KindSecret && envFrom.SecretRef != nil {
-				if envFrom.SecretRef.Name == resourceName {
-					return true
-				}
-			}
-			if resourceKind == util.KindConfigMap && envFrom.ConfigMapRef != nil {
-				if envFrom.ConfigMapRef.Name == resourceName {
-					return true
-				}
-			}
-		}
-	}
-
-	// Check volumes
-	for _, volume := range podSpec.Volumes {
-		if resourceKind == util.KindSecret && volume.Secret != nil {
-			if volume.Secret.SecretName == resourceName {
-				return true
-			}
-		}
-		if resourceKind == util.KindConfigMap && volume.ConfigMap != nil {
-			if volume.ConfigMap.Name == resourceName {
-				return true
-			}
-		}
-	}
-
-	return false
+	return util.CheckPodSpecReferencesResource(podSpec, resourceKind, resourceName)
 }
 
 // workloadExists checks if a workload of the given kind exists
 func (r *ReloaderConfigReconciler) workloadExists(ctx context.Context, kind, name, namespace string) (bool, error) {
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	switch kind {
-	case util.KindDeployment:
-		deployment := &appsv1.Deployment{}
-		err := r.Get(ctx, key, deployment)
-		return err == nil, client.IgnoreNotFound(err)
-
-	case util.KindStatefulSet:
-		statefulSet := &appsv1.StatefulSet{}
-		err := r.Get(ctx, key, statefulSet)
-		return err == nil, client.IgnoreNotFound(err)
-
-	case util.KindDaemonSet:
-		daemonSet := &appsv1.DaemonSet{}
-		err := r.Get(ctx, key, daemonSet)
-		return err == nil, client.IgnoreNotFound(err)
-
-	default:
-		return false, fmt.Errorf("unsupported workload kind: %s", kind)
-	}
+	return util.WorkloadExists(ctx, r.Client, kind, name, namespace)
 }
 
 // shouldProcessNamespace checks if a namespace should be processed based on filters

@@ -28,6 +28,76 @@ import (
 	"github.com/stakater/Reloader/internal/pkg/util"
 )
 
+// reconcileResourceUpdate is a generic function that handles Secret/ConfigMap updates
+func (r *ReloaderConfigReconciler) reconcileResourceUpdate(
+	ctx context.Context,
+	resourceKind string,
+	obj client.Object,
+) (ctrl.Result, error) {
+	logger := log.FromContext(ctx)
+	resourceName := obj.GetName()
+	resourceNamespace := obj.GetNamespace()
+	resourceTypeName := resourceKind // "Secret" or "ConfigMap" for logging
+
+	// Phase 0: Check if resource should be ignored
+	annotations := obj.GetAnnotations()
+	if annotations != nil && annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info(resourceTypeName+" marked as ignored, skipping reload",
+			"name", resourceName,
+			"namespace", resourceNamespace)
+		return ctrl.Result{}, nil
+	}
+
+	// Phase 1: Check if resource data actually changed (hash-based change detection)
+	currentHash, err := util.GetResourceDataAndHash(obj)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+	storedHash := r.getStoredHash(annotations)
+
+	if currentHash == storedHash {
+		// Hash matches - no actual change, skip reload
+		logger.V(1).Info(resourceTypeName+" data unchanged, skipping reload", "hash", currentHash)
+		return ctrl.Result{}, nil
+	}
+
+	logger.Info(resourceTypeName+" data changed", "oldHash", storedHash, "newHash", currentHash)
+
+	// Phase 2: Discover all workloads that need to be reloaded
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, resourceKind, resourceName, resourceNamespace)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info("Found targets for reload",
+		"resource", resourceTypeName+"/"+resourceName,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Phase 2.5: Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, resourceKind, resourceName, resourceNamespace)
+	logger.Info("Filtered targets for targeted reload",
+		"resource", resourceTypeName+"/"+resourceName,
+		"before", len(allTargets),
+		"after", len(filteredTargets))
+
+	// Phase 3: Execute reloads for filtered targets
+	successCount := r.executeReloads(ctx, filteredTargets, resourceKind, resourceName, resourceNamespace, currentHash)
+
+	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
+	if successCount > 0 {
+		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, resourceNamespace, resourceKind, resourceName, currentHash)
+	}
+
+	// Phase 5: Persist new hash in resource annotation for future comparisons
+	if err := r.updateResourceHash(ctx, obj, currentHash); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info(resourceTypeName+" reconciliation complete", "hash", currentHash, "reloadedTargets", len(allTargets))
+	return ctrl.Result{}, nil
+}
+
 // reconcileSecret handles Secret changes and triggers workload reloads
 //
 // Business Logic Flow:
@@ -63,61 +133,7 @@ func (r *ReloaderConfigReconciler) reconcileSecret(
 	ctx context.Context,
 	secret *corev1.Secret,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Phase 0: Check if Secret should be ignored
-	if secret.Annotations != nil && secret.Annotations[util.AnnotationIgnore] == "true" {
-		logger.V(1).Info("Secret marked as ignored, skipping reload",
-			"secret", secret.Name,
-			"namespace", secret.Namespace)
-		return ctrl.Result{}, nil
-	}
-
-	// Phase 1: Check if Secret data actually changed (hash-based change detection)
-	currentHash := util.CalculateHash(secret.Data)
-	storedHash := r.getStoredHash(secret.Annotations)
-
-	if currentHash == storedHash {
-		// Hash matches - no actual change, skip reload
-		logger.V(1).Info("Secret data unchanged, skipping reload", "hash", currentHash)
-		return ctrl.Result{}, nil
-	}
-
-	logger.Info("Secret data changed", "oldHash", storedHash, "newHash", currentHash)
-
-	// Phase 2: Discover all workloads that need to be reloaded
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindSecret, secret.Name, secret.Namespace)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Found targets for reload",
-		"secret", secret.Name,
-		"totalTargets", len(allTargets),
-		"fromCRD", len(reloaderConfigs))
-
-	// Phase 2.5: Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
-	logger.Info("Filtered targets for targeted reload",
-		"secret", secret.Name,
-		"before", len(allTargets),
-		"after", len(filteredTargets))
-
-	// Phase 3: Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, secret.Namespace, currentHash)
-
-	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
-	if successCount > 0 {
-		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
-	}
-
-	// Phase 5: Persist new hash in Secret annotation for future comparisons
-	if err := r.updateResourceHash(ctx, secret, currentHash); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Secret reconciliation complete", "hash", currentHash, "reloadedTargets", len(allTargets))
-	return ctrl.Result{}, nil
+	return r.reconcileResourceUpdate(ctx, util.KindSecret, secret)
 }
 
 // reconcileConfigMap handles ConfigMap changes and triggers workload reloads
@@ -132,62 +148,67 @@ func (r *ReloaderConfigReconciler) reconcileConfigMap(
 	ctx context.Context,
 	configMap *corev1.ConfigMap,
 ) (ctrl.Result, error) {
+	return r.reconcileResourceUpdate(ctx, util.KindConfigMap, configMap)
+}
+
+// reconcileResourceCreated is a generic function that handles Secret/ConfigMap CREATE events
+func (r *ReloaderConfigReconciler) reconcileResourceCreated(
+	ctx context.Context,
+	resourceKind string,
+	obj client.Object,
+) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	resourceName := obj.GetName()
+	resourceNamespace := obj.GetNamespace()
+	resourceTypeName := resourceKind // "Secret" or "ConfigMap" for logging
 
-	// Phase 0: Check if ConfigMap should be ignored
-	if configMap.Annotations != nil && configMap.Annotations[util.AnnotationIgnore] == "true" {
-		logger.V(1).Info("ConfigMap marked as ignored, skipping reload",
-			"configMap", configMap.Name,
-			"namespace", configMap.Namespace)
+	// Check if resource should be ignored
+	annotations := obj.GetAnnotations()
+	if annotations != nil && annotations[util.AnnotationIgnore] == "true" {
+		logger.V(1).Info(resourceTypeName+" marked as ignored, skipping reload on create",
+			"name", resourceName,
+			"namespace", resourceNamespace)
 		return ctrl.Result{}, nil
 	}
 
-	// Phase 1: Check if ConfigMap data actually changed (hash-based change detection)
-	// Note: ConfigMaps have both Data and BinaryData, so we merge them
-	data := util.MergeDataMaps(configMap.Data, configMap.BinaryData)
-	currentHash := util.CalculateHash(data)
-	storedHash := r.getStoredHash(configMap.Annotations)
+	logger.Info(resourceTypeName+" created", "name", resourceName, "namespace", resourceNamespace)
 
-	if currentHash == storedHash {
-		// Hash matches - no actual change, skip reload
-		logger.V(1).Info("ConfigMap data unchanged, skipping reload", "hash", currentHash)
-		return ctrl.Result{}, nil
-	}
-
-	logger.Info("ConfigMap data changed", "oldHash", storedHash, "newHash", currentHash)
-
-	// Phase 2: Discover all workloads that need to be reloaded
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindConfigMap, configMap.Name, configMap.Namespace)
+	// Calculate hash for the new resource
+	currentHash, err := util.GetResourceDataAndHash(obj)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Found targets for reload",
-		"configMap", configMap.Name,
-		"totalTargets", len(allTargets),
-		"fromCRD", len(reloaderConfigs))
-
-	// Phase 2.5: Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
-	logger.Info("Filtered targets for targeted reload",
-		"configMap", configMap.Name,
-		"before", len(allTargets),
-		"after", len(filteredTargets))
-
-	// Phase 3: Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, configMap.Namespace, currentHash)
-
-	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
-	if successCount > 0 {
-		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
-	}
-
-	// Phase 5: Persist new hash in ConfigMap annotation for future comparisons
-	if err := r.updateResourceHash(ctx, configMap, currentHash); err != nil {
+	// Discover all workloads that need to be reloaded
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, resourceKind, resourceName, resourceNamespace)
+	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("ConfigMap reconciliation complete", "hash", currentHash, "reloadedTargets", len(allTargets))
+	logger.Info("Found targets for reload on create",
+		"resource", resourceTypeName+"/"+resourceName,
+		"totalTargets", len(allTargets),
+		"fromCRD", len(reloaderConfigs))
+
+	// Always update ReloaderConfig statuses to track the new resource
+	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, resourceNamespace, resourceKind, resourceName, currentHash)
+
+	// Only trigger workload reloads if ReloadOnCreate flag is enabled
+	successCount := 0
+	if r.ReloadOnCreate {
+		// Filter targets based on targeted reload settings
+		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, resourceKind, resourceName, resourceNamespace)
+
+		// Execute reloads for filtered targets
+		successCount = r.executeReloads(ctx, filteredTargets, resourceKind, resourceName, resourceNamespace, currentHash)
+	}
+
+	// Persist hash in resource annotation for future update events
+	if err := r.updateResourceHash(ctx, obj, currentHash); err != nil {
+		return ctrl.Result{}, err
+	}
+
+	logger.Info(resourceTypeName+" create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount, "reloadOnCreate", r.ReloadOnCreate)
 	return ctrl.Result{}, nil
 }
 
@@ -201,50 +222,45 @@ func (r *ReloaderConfigReconciler) reconcileSecretCreated(
 	ctx context.Context,
 	secret *corev1.Secret,
 ) (ctrl.Result, error) {
+	return r.reconcileResourceCreated(ctx, util.KindSecret, secret)
+}
+
+// reconcileResourceDeleted is a generic function that handles Secret/ConfigMap DELETE events
+func (r *ReloaderConfigReconciler) reconcileResourceDeleted(
+	ctx context.Context,
+	resourceKind string,
+	resourceKey client.ObjectKey,
+) (ctrl.Result, error) {
 	logger := log.FromContext(ctx)
+	resourceTypeName := resourceKind // "Secret" or "ConfigMap" for logging
 
-	// Check if Secret should be ignored
-	if secret.Annotations != nil && secret.Annotations[util.AnnotationIgnore] == "true" {
-		logger.V(1).Info("Secret marked as ignored, skipping reload on create",
-			"secret", secret.Name,
-			"namespace", secret.Namespace)
-		return ctrl.Result{}, nil
-	}
-	logger.Info("Secret created", "name", secret.Name, "namespace", secret.Namespace)
+	logger.Info(resourceTypeName+" deleted", "name", resourceKey.Name, "namespace", resourceKey.Namespace)
 
-	// Calculate hash for the new Secret
-	currentHash := util.CalculateHash(secret.Data)
-
-	// Discover all workloads that need to be reloaded
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindSecret, secret.Name, secret.Namespace)
+	// Discover all workloads that were watching this resource
+	// Note: We can still find these because the workload annotations/ReloaderConfigs still exist
+	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, resourceKind, resourceKey.Name, resourceKey.Namespace)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Found targets for reload on create",
-		"secret", secret.Name,
+	logger.Info("Found targets for reload on delete",
+		"resource", resourceTypeName+"/"+resourceKey.Name,
 		"totalTargets", len(allTargets),
 		"fromCRD", len(reloaderConfigs))
 
-	// Always update ReloaderConfig statuses to track the new resource
-	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
+	// Filter targets based on targeted reload settings
+	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, resourceKind, resourceKey.Name, resourceKey.Namespace)
 
-	// Only trigger workload reloads if ReloadOnCreate flag is enabled
-	successCount := 0
-	if r.ReloadOnCreate {
-		// Filter targets based on targeted reload settings
-		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
+	// Execute delete-specific reloads for filtered targets
+	successCount := r.executeDeleteReloads(ctx, filteredTargets, resourceKind, resourceKey.Name)
 
-		// Execute reloads for filtered targets
-		successCount = r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, secret.Namespace, currentHash)
+	// Update ReloaderConfig statuses (only if at least one reload succeeded)
+	// For delete events, we remove the hash entry from the status
+	if successCount > 0 {
+		r.removeReloaderConfigStatusEntries(ctx, reloaderConfigs, resourceKey.Namespace, resourceKind, resourceKey.Name)
 	}
 
-	// Persist hash in Secret annotation for future update events
-	if err := r.updateResourceHash(ctx, secret, currentHash); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Secret create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount, "reloadOnCreate", r.ReloadOnCreate)
+	logger.Info(resourceTypeName+" delete reconciliation complete", "reloadedTargets", successCount)
 	return ctrl.Result{}, nil
 }
 
@@ -258,35 +274,7 @@ func (r *ReloaderConfigReconciler) reconcileSecretDeleted(
 	ctx context.Context,
 	secretKey client.ObjectKey,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("Secret deleted", "name", secretKey.Name, "namespace", secretKey.Namespace)
-
-	// Discover all workloads that were watching this Secret
-	// Note: We can still find these because the workload annotations/ReloaderConfigs still exist
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindSecret, secretKey.Name, secretKey.Namespace)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Found targets for reload on delete",
-		"secret", secretKey.Name,
-		"totalTargets", len(allTargets),
-		"fromCRD", len(reloaderConfigs))
-
-	// Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secretKey.Name, secretKey.Namespace)
-
-	// Execute delete-specific reloads for filtered targets
-	successCount := r.executeDeleteReloads(ctx, filteredTargets, util.KindSecret, secretKey.Name)
-
-	// Update ReloaderConfig statuses (only if at least one reload succeeded)
-	// For delete events, we remove the hash entry from the status
-	if successCount > 0 {
-		r.removeReloaderConfigStatusEntries(ctx, reloaderConfigs, secretKey.Namespace, util.KindSecret, secretKey.Name)
-	}
-
-	logger.Info("Secret delete reconciliation complete", "reloadedTargets", successCount)
-	return ctrl.Result{}, nil
+	return r.reconcileResourceDeleted(ctx, util.KindSecret, secretKey)
 }
 
 // reconcileConfigMapCreated handles ConfigMap CREATE events
@@ -294,53 +282,7 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 	ctx context.Context,
 	configMap *corev1.ConfigMap,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-
-	// Check if ConfigMap should be ignored
-	if configMap.Annotations != nil && configMap.Annotations[util.AnnotationIgnore] == "true" {
-		logger.V(1).Info("ConfigMap marked as ignored, skipping reload on create",
-			"configMap", configMap.Name,
-			"namespace", configMap.Namespace)
-		return ctrl.Result{}, nil
-	}
-
-	logger.Info("ConfigMap created", "name", configMap.Name, "namespace", configMap.Namespace)
-
-	// Calculate hash for the new ConfigMap
-	data := util.MergeDataMaps(configMap.Data, configMap.BinaryData)
-	currentHash := util.CalculateHash(data)
-
-	// Discover all workloads that need to be reloaded
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindConfigMap, configMap.Name, configMap.Namespace)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Found targets for reload on create",
-		"configMap", configMap.Name,
-		"totalTargets", len(allTargets),
-		"fromCRD", len(reloaderConfigs))
-
-	// Always update ReloaderConfig statuses to track the new resource
-	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
-
-	// Only trigger workload reloads if ReloadOnCreate flag is enabled
-	successCount := 0
-	if r.ReloadOnCreate {
-		// Filter targets based on targeted reload settings
-		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
-
-		// Execute reloads for filtered targets
-		successCount = r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, configMap.Namespace, currentHash)
-	}
-
-	// Persist hash in ConfigMap annotation for future update events
-	if err := r.updateResourceHash(ctx, configMap, currentHash); err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("ConfigMap create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount, "reloadOnCreate", r.ReloadOnCreate)
-	return ctrl.Result{}, nil
+	return r.reconcileResourceCreated(ctx, util.KindConfigMap, configMap)
 }
 
 // reconcileConfigMapDeleted handles ConfigMap DELETE events when --reload-on-delete is enabled
@@ -348,34 +290,7 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapDeleted(
 	ctx context.Context,
 	configMapKey client.ObjectKey,
 ) (ctrl.Result, error) {
-	logger := log.FromContext(ctx)
-	logger.Info("ConfigMap deleted", "name", configMapKey.Name, "namespace", configMapKey.Namespace)
-
-	// Discover all workloads that were watching this ConfigMap
-	allTargets, reloaderConfigs, err := r.discoverTargets(ctx, util.KindConfigMap, configMapKey.Name, configMapKey.Namespace)
-	if err != nil {
-		return ctrl.Result{}, err
-	}
-
-	logger.Info("Found targets for reload on delete",
-		"configMap", configMapKey.Name,
-		"totalTargets", len(allTargets),
-		"fromCRD", len(reloaderConfigs))
-
-	// Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMapKey.Name, configMapKey.Namespace)
-
-	// Execute delete-specific reloads for filtered targets
-	successCount := r.executeDeleteReloads(ctx, filteredTargets, util.KindConfigMap, configMapKey.Name)
-
-	// Update ReloaderConfig statuses (only if at least one reload succeeded)
-	// For delete events, we remove the hash entry from the status
-	if successCount > 0 {
-		r.removeReloaderConfigStatusEntries(ctx, reloaderConfigs, configMapKey.Namespace, util.KindConfigMap, configMapKey.Name)
-	}
-
-	logger.Info("ConfigMap delete reconciliation complete", "reloadedTargets", successCount)
-	return ctrl.Result{}, nil
+	return r.reconcileResourceDeleted(ctx, util.KindConfigMap, configMapKey)
 }
 
 // mapSecretToRequests maps a Secret to reconcile requests

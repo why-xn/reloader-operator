@@ -204,30 +204,7 @@ func (u *Updater) reloadDeployment(
 	ctx context.Context,
 	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
-	logger := log.FromContext(ctx)
-
-	deployment := &appsv1.Deployment{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, deployment); err != nil {
-		return fmt.Errorf("failed to get Deployment: %w", err)
-	}
-
-	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
-		return err
-	}
-
-	// Update the Deployment
-	if err := u.Update(ctx, deployment); err != nil {
-		return fmt.Errorf("failed to update Deployment: %w", err)
-	}
-
-	logger.Info("Successfully triggered Deployment reload",
-		"deployment", name,
-		"strategy", strategy)
-
-	return nil
+	return u.reloadWorkloadGeneric(ctx, util.KindDeployment, name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
 }
 
 // reloadStatefulSet triggers a rolling update of a StatefulSet
@@ -235,30 +212,7 @@ func (u *Updater) reloadStatefulSet(
 	ctx context.Context,
 	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
-	logger := log.FromContext(ctx)
-
-	statefulSet := &appsv1.StatefulSet{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, statefulSet); err != nil {
-		return fmt.Errorf("failed to get StatefulSet: %w", err)
-	}
-
-	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
-		return err
-	}
-
-	// Update the StatefulSet
-	if err := u.Update(ctx, statefulSet); err != nil {
-		return fmt.Errorf("failed to update StatefulSet: %w", err)
-	}
-
-	logger.Info("Successfully triggered StatefulSet reload",
-		"statefulset", name,
-		"strategy", strategy)
-
-	return nil
+	return u.reloadWorkloadGeneric(ctx, util.KindStatefulSet, name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
 }
 
 // reloadDaemonSet triggers a rolling update of a DaemonSet
@@ -266,27 +220,85 @@ func (u *Updater) reloadDaemonSet(
 	ctx context.Context,
 	name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
 ) error {
+	return u.reloadWorkloadGeneric(ctx, util.KindDaemonSet, name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash)
+}
+
+// getPodTemplate extracts the pod template from any workload type
+func getPodTemplate(obj client.Object) (*corev1.PodTemplateSpec, error) {
+	return util.GetPodTemplate(obj)
+}
+
+// reloadWorkloadGeneric is a generic function that handles reload for any workload type
+func (u *Updater) reloadWorkloadGeneric(
+	ctx context.Context,
+	kind, name, namespace, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash string,
+) error {
 	logger := log.FromContext(ctx)
 
-	daemonSet := &appsv1.DaemonSet{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, daemonSet); err != nil {
-		return fmt.Errorf("failed to get DaemonSet: %w", err)
+	// Fetch the workload
+	target := Target{Kind: kind, Name: name, Namespace: namespace}
+	obj, err := u.getWorkload(ctx, target)
+	if err != nil {
+		return fmt.Errorf("failed to get %s: %w", kind, err)
 	}
 
-	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
+	// Extract pod template
+	podTemplate, err := getPodTemplate(obj)
+	if err != nil {
 		return err
 	}
 
-	// Update the DaemonSet
-	if err := u.Update(ctx, daemonSet); err != nil {
-		return fmt.Errorf("failed to update DaemonSet: %w", err)
+	// Apply the reload strategy (env-vars or annotations)
+	if err := applyReloadStrategy(podTemplate, strategy, reloadSourceJSON, resourceKind, resourceName, resourceHash); err != nil {
+		return err
 	}
 
-	logger.Info("Successfully triggered DaemonSet reload",
-		"daemonset", name,
+	// Update the workload
+	if err := u.Update(ctx, obj); err != nil {
+		return fmt.Errorf("failed to update %s: %w", kind, err)
+	}
+
+	logger.Info("Successfully triggered workload reload",
+		"kind", kind,
+		"name", name,
+		"strategy", strategy)
+
+	return nil
+}
+
+// reloadDeleteWorkloadGeneric is a generic function that handles delete reload for any workload type
+func (u *Updater) reloadDeleteWorkloadGeneric(
+	ctx context.Context,
+	kind, name, namespace, strategy, resourceKind, resourceName string,
+) error {
+	logger := log.FromContext(ctx)
+
+	// Fetch the workload
+	target := Target{Kind: kind, Name: name, Namespace: namespace}
+	obj, err := u.getWorkload(ctx, target)
+	if err != nil {
+		return fmt.Errorf("failed to get %s: %w", kind, err)
+	}
+
+	// Extract pod template
+	podTemplate, err := getPodTemplate(obj)
+	if err != nil {
+		return err
+	}
+
+	// Apply the delete strategy (remove env var or set empty hash annotation)
+	if err := applyDeleteStrategy(podTemplate, strategy, resourceKind, resourceName); err != nil {
+		return err
+	}
+
+	// Update the workload
+	if err := u.Update(ctx, obj); err != nil {
+		return fmt.Errorf("failed to update %s: %w", kind, err)
+	}
+
+	logger.Info("Successfully triggered workload delete reload",
+		"kind", kind,
+		"name", name,
 		"strategy", strategy)
 
 	return nil
@@ -298,30 +310,7 @@ func (u *Updater) reloadDeleteDeployment(
 	name, namespace, strategy string,
 	resourceKind, resourceName string,
 ) error {
-	logger := log.FromContext(ctx)
-
-	deployment := &appsv1.Deployment{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, deployment); err != nil {
-		return fmt.Errorf("failed to get Deployment: %w", err)
-	}
-
-	// Apply the delete strategy (remove env var or set empty hash annotation)
-	if err := applyDeleteStrategy(&deployment.Spec.Template, strategy, resourceKind, resourceName); err != nil {
-		return err
-	}
-
-	// Update the Deployment
-	if err := u.Update(ctx, deployment); err != nil {
-		return fmt.Errorf("failed to update Deployment: %w", err)
-	}
-
-	logger.Info("Successfully triggered Deployment delete reload",
-		"deployment", name,
-		"strategy", strategy)
-
-	return nil
+	return u.reloadDeleteWorkloadGeneric(ctx, util.KindDeployment, name, namespace, strategy, resourceKind, resourceName)
 }
 
 // reloadDeleteStatefulSet triggers a rolling update of a StatefulSet using delete strategy
@@ -330,30 +319,7 @@ func (u *Updater) reloadDeleteStatefulSet(
 	name, namespace, strategy string,
 	resourceKind, resourceName string,
 ) error {
-	logger := log.FromContext(ctx)
-
-	statefulSet := &appsv1.StatefulSet{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, statefulSet); err != nil {
-		return fmt.Errorf("failed to get StatefulSet: %w", err)
-	}
-
-	// Apply the delete strategy
-	if err := applyDeleteStrategy(&statefulSet.Spec.Template, strategy, resourceKind, resourceName); err != nil {
-		return err
-	}
-
-	// Update the StatefulSet
-	if err := u.Update(ctx, statefulSet); err != nil {
-		return fmt.Errorf("failed to update StatefulSet: %w", err)
-	}
-
-	logger.Info("Successfully triggered StatefulSet delete reload",
-		"statefulset", name,
-		"strategy", strategy)
-
-	return nil
+	return u.reloadDeleteWorkloadGeneric(ctx, util.KindStatefulSet, name, namespace, strategy, resourceKind, resourceName)
 }
 
 // reloadDeleteDaemonSet triggers a rolling update of a DaemonSet using delete strategy
@@ -362,30 +328,7 @@ func (u *Updater) reloadDeleteDaemonSet(
 	name, namespace, strategy string,
 	resourceKind, resourceName string,
 ) error {
-	logger := log.FromContext(ctx)
-
-	daemonSet := &appsv1.DaemonSet{}
-	key := client.ObjectKey{Name: name, Namespace: namespace}
-
-	if err := u.Get(ctx, key, daemonSet); err != nil {
-		return fmt.Errorf("failed to get DaemonSet: %w", err)
-	}
-
-	// Apply the delete strategy
-	if err := applyDeleteStrategy(&daemonSet.Spec.Template, strategy, resourceKind, resourceName); err != nil {
-		return err
-	}
-
-	// Update the DaemonSet
-	if err := u.Update(ctx, daemonSet); err != nil {
-		return fmt.Errorf("failed to update DaemonSet: %w", err)
-	}
-
-	logger.Info("Successfully triggered DaemonSet delete reload",
-		"daemonset", name,
-		"strategy", strategy)
-
-	return nil
+	return u.reloadDeleteWorkloadGeneric(ctx, util.KindDaemonSet, name, namespace, strategy, resourceKind, resourceName)
 }
 
 // applyReloadStrategy applies the chosen reload strategy to a pod template
@@ -593,33 +536,7 @@ func (u *Updater) IsPaused(ctx context.Context, target Target) (bool, error) {
 
 // getWorkload retrieves the workload object based on target kind
 func (u *Updater) getWorkload(ctx context.Context, target Target) (client.Object, error) {
-	key := client.ObjectKey{
-		Name:      target.Name,
-		Namespace: target.Namespace,
-	}
-
-	switch target.Kind {
-	case util.KindDeployment:
-		obj := &appsv1.Deployment{}
-		if err := u.Client.Get(ctx, key, obj); err != nil {
-			return nil, err
-		}
-		return obj, nil
-	case util.KindStatefulSet:
-		obj := &appsv1.StatefulSet{}
-		if err := u.Client.Get(ctx, key, obj); err != nil {
-			return nil, err
-		}
-		return obj, nil
-	case util.KindDaemonSet:
-		obj := &appsv1.DaemonSet{}
-		if err := u.Client.Get(ctx, key, obj); err != nil {
-			return nil, err
-		}
-		return obj, nil
-	default:
-		return nil, fmt.Errorf("unsupported workload kind: %s", target.Kind)
-	}
+	return util.GetWorkload(ctx, u.Client, target.Kind, target.Name, target.Namespace)
 }
 
 // setLastReloadAnnotation sets the last reload timestamp annotation on the workload

@@ -18,6 +18,8 @@ package util
 
 import (
 	"testing"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 func TestCalculateHash(t *testing.T) {
@@ -187,5 +189,79 @@ func TestCalculateHashChangeDetection(t *testing.T) {
 	// Identical should have same hash
 	if hashOriginal != hashIdentical {
 		t.Errorf("CalculateHash() produced different hash for identical data")
+	}
+}
+
+func TestGetResourceDataAndHash(t *testing.T) {
+	tests := []struct {
+		name      string
+		obj       interface{}
+		wantErr   bool
+		wantEmpty bool
+	}{
+		{
+			name: "secret with data",
+			obj: &corev1.Secret{
+				Data: map[string][]byte{
+					"username": []byte("admin"),
+					"password": []byte("secret"),
+				},
+			},
+			wantErr:   false,
+			wantEmpty: false,
+		},
+		{
+			name: "secret with no data",
+			obj: &corev1.Secret{
+				Data: map[string][]byte{},
+			},
+			wantErr:   false,
+			wantEmpty: true,
+		},
+		{
+			name: "configmap with both data types",
+			obj: &corev1.ConfigMap{
+				Data: map[string]string{
+					"config.txt": "text data",
+				},
+				BinaryData: map[string][]byte{
+					"binary.dat": {0x00, 0x01},
+				},
+			},
+			wantErr:   false,
+			wantEmpty: false,
+		},
+		{
+			name: "configmap with only string data",
+			obj: &corev1.ConfigMap{
+				Data: map[string]string{
+					"config.yaml": "server:\n  port: 8080",
+				},
+			},
+			wantErr:   false,
+			wantEmpty: false,
+		},
+		{
+			name:      "unsupported type",
+			obj:       &corev1.Pod{},
+			wantErr:   true,
+			wantEmpty: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			hash, err := GetResourceDataAndHash(tt.obj)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("GetResourceDataAndHash() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantEmpty && hash != "" {
+				t.Errorf("GetResourceDataAndHash() = %s, want empty", hash)
+			}
+			if !tt.wantEmpty && !tt.wantErr && hash == "" {
+				t.Errorf("GetResourceDataAndHash() returned empty hash for non-empty data")
+			}
+		})
 	}
 }

@@ -19,7 +19,10 @@ package util
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"fmt"
 	"sort"
+
+	corev1 "k8s.io/api/core/v1"
 )
 
 // CalculateHash computes a SHA256 hash of the provided data map.
@@ -82,4 +85,18 @@ func MergeDataMaps(stringData map[string]string, binaryData map[string][]byte) m
 	}
 
 	return result
+}
+
+// GetResourceDataAndHash extracts data from a Secret or ConfigMap and calculates its hash
+// This consolidates the duplicate data extraction logic from reconcile functions
+func GetResourceDataAndHash(obj interface{}) (string, error) {
+	switch resource := obj.(type) {
+	case *corev1.Secret:
+		return CalculateHash(resource.Data), nil
+	case *corev1.ConfigMap:
+		data := MergeDataMaps(resource.Data, resource.BinaryData)
+		return CalculateHash(data), nil
+	default:
+		return "", fmt.Errorf("unsupported resource type: %T", obj)
+	}
 }
