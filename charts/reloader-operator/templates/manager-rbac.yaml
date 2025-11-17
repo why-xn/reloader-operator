@@ -1,16 +1,10 @@
-{{- if .Values.rbac.create -}}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: {{ include "reloader-operator.clusterRoleName" . }}
+  name: {{ include "reloader-operator.fullname" . }}-manager-role
   labels:
-    {{- include "reloader-operator.labels" . | nindent 4 }}
-  {{- with .Values.rbac.annotations }}
-  annotations:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
+  {{- include "reloader-operator.labels" . | nindent 4 }}
 rules:
-# ConfigMaps and Secrets watching and patching
 - apiGroups:
   - ""
   resources:
@@ -22,7 +16,6 @@ rules:
   - patch
   - update
   - watch
-# Event creation for audit trail
 - apiGroups:
   - ""
   resources:
@@ -30,7 +23,23 @@ rules:
   verbs:
   - create
   - patch
-# Workload management (Deployments, StatefulSets, DaemonSets)
+- apiGroups:
+  - ""
+  resources:
+  - namespaces
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - ""
+  resources:
+  - pods
+  verbs:
+  - delete
+  - get
+  - list
+  - watch
 - apiGroups:
   - apps
   resources:
@@ -43,7 +52,6 @@ rules:
   - patch
   - update
   - watch
-# OpenShift DeploymentConfigs support
 - apiGroups:
   - apps.openshift.io
   resources:
@@ -54,7 +62,6 @@ rules:
   - patch
   - update
   - watch
-# Argo Rollouts support
 - apiGroups:
   - argoproj.io
   resources:
@@ -65,7 +72,6 @@ rules:
   - patch
   - update
   - watch
-# ReloaderConfig CRD management
 - apiGroups:
   - reloader.stakater.com
   resources:
@@ -78,14 +84,12 @@ rules:
   - patch
   - update
   - watch
-# ReloaderConfig finalizers
 - apiGroups:
   - reloader.stakater.com
   resources:
   - reloaderconfigs/finalizers
   verbs:
   - update
-# ReloaderConfig status updates
 - apiGroups:
   - reloader.stakater.com
   resources:
@@ -94,4 +98,18 @@ rules:
   - get
   - patch
   - update
-{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "reloader-operator.fullname" . }}-manager-rolebinding
+  labels:
+  {{- include "reloader-operator.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: '{{ include "reloader-operator.fullname" . }}-manager-role'
+subjects:
+- kind: ServiceAccount
+  name: '{{ include "reloader-operator.serviceAccountName" . }}'
+  namespace: '{{ .Release.Namespace }}'

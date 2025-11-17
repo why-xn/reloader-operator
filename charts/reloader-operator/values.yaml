@@ -1,265 +1,210 @@
 # Default values for reloader-operator
 # This is a YAML-formatted file.
-# Declare variables to be passed into your templates.
 
-# Number of operator replicas
-replicaCount: 1
+# ============================================================================
+# Controller Manager Configuration
+# ============================================================================
+controllerManager:
+  # Number of controller manager replicas
+  replicas: 1
 
-image:
-  # Container image repository
-  repository: stakater/reloader-operator
-  # Image pull policy
-  pullPolicy: IfNotPresent
-  # Overrides the image tag whose default is the chart appVersion
-  tag: ""
+  manager:
+    # Container image configuration
+    image:
+      # Image repository
+      repository: stakater/reloader-operator
+      # Image tag (overrides the appVersion from Chart.yaml)
+      tag: v2.0.0
+      # Image pull policy
+      pullPolicy: IfNotPresent
 
-# Image pull secrets for private registries
-imagePullSecrets: []
+    # Operator command-line arguments
+    args:
+      # Metrics server bind address (use :8443 for HTTPS, :8080 for HTTP, or 0 to disable)
+      - --metrics-bind-address=:8443
+      # Enable leader election for high availability
+      - --leader-elect
+      # Health probe bind address
+      - --health-probe-bind-address=:8081
+      # Reload workloads when watched resources are created
+      - --reload-on-create=false
+      # Reload workloads when watched resources are deleted
+      - --reload-on-delete=false
+      # Default rollout strategy: "rollout" (modify template) or "restart" (delete pods)
+      - --rollout-strategy=rollout
+      # Default reload strategy: "env-vars" or "annotations" (when rollout-strategy=rollout)
+      - --reload-strategy=env-vars
+      # Enable alerts on reload (requires alert-webhook-url)
+      # - --alert-on-reload=true
+      # Alert sink type: slack, teams, gchat, or webhook
+      # - --alert-sink=webhook
+      # Webhook URL for alerts
+      # - --alert-webhook-url=https://your-webhook-url
+      # Additional info to include in alerts
+      # - --alert-additional-info=Cluster: production
+      # Label selector for resources (e.g., "app=myapp,env=prod")
+      # - --resource-label-selector=
+      # Namespace label selector (e.g., "environment=production")
+      # - --namespace-selector=
+      # Comma-separated list of namespaces to ignore
+      # - --namespaces-to-ignore=kube-system,kube-public
 
-# Override the name of the chart
-nameOverride: ""
-# Override the full name of the resources
-fullnameOverride: ""
+    # Container security context
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 65532
+      seccompProfile:
+        type: RuntimeDefault
 
+    # Resource limits and requests
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+
+    # Environment variables
+    env: []
+    # - name: LOG_LEVEL
+    #   value: debug
+
+    # Volume mounts
+    volumeMounts: []
+
+  # Pod security context
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Pod annotations
+  podAnnotations: {}
+
+  # Pod labels
+  podLabels: {}
+
+  # Node selector
+  nodeSelector: {}
+
+  # Tolerations
+  tolerations: []
+
+  # Affinity
+  affinity: {}
+
+  # Topology spread constraints
+  topologySpreadConstraints: []
+
+  # Priority class name
+  priorityClassName: ""
+
+  # Volumes
+  volumes: []
+
+# ============================================================================
+# Service Account Configuration
+# ============================================================================
 serviceAccount:
-  # Specifies whether a service account should be created
+  # Create a service account
   create: true
-  # Annotations to add to the service account
+  # Service account annotations
   annotations: {}
-  # The name of the service account to use.
-  # If not set and create is true, a name is generated using the fullname template
+  # Automatically mount service account token
+  automount: true
+  # Service account name (generated if not set)
   name: ""
 
+# ============================================================================
+# RBAC Configuration
+# ============================================================================
 rbac:
-  # Specifies whether RBAC resources should be created
+  # Create RBAC resources (ClusterRole, ClusterRoleBinding)
   create: true
-  # Annotations to add to the ClusterRole and ClusterRoleBinding
+  # RBAC annotations
   annotations: {}
 
-# Pod annotations
-podAnnotations: {}
-
-# Pod security context
-podSecurityContext:
-  runAsNonRoot: true
-  runAsUser: 65532
-  fsGroup: 65532
-  seccompProfile:
-    type: RuntimeDefault
-
-# Container security context
-securityContext:
-  allowPrivilegeEscalation: false
-  capabilities:
-    drop:
-    - ALL
-  readOnlyRootFilesystem: true
-
-# Service configuration for metrics endpoint
-service:
+# ============================================================================
+# Metrics Service Configuration
+# ============================================================================
+metricsService:
   # Service type
   type: ClusterIP
-  # Service port for metrics
-  port: 8080
-  # Annotations to add to the service
+  # Service ports
+  ports:
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+  # Service annotations
   annotations: {}
+  # Service labels
+  labels: {}
 
-# Resource requests and limits
-resources:
-  limits:
-    cpu: 500m
-    memory: 256Mi
-  requests:
-    cpu: 100m
-    memory: 64Mi
+# ============================================================================
+# Metrics Server TLS Certificates
+# ============================================================================
+# If you want to provide your own TLS certificates for the metrics server,
+# uncomment and configure the following:
+# metricsCerts:
+#   # Path to the directory containing certificates
+#   path: /tmp/k8s-metrics-server/metrics-certs
+#   # Certificate file name
+#   certName: tls.crt
+#   # Key file name
+#   keyName: tls.key
 
-# Liveness probe configuration
-livenessProbe:
-  httpGet:
-    path: /healthz
-    port: 8081
-  initialDelaySeconds: 15
-  periodSeconds: 20
-  timeoutSeconds: 5
-  failureThreshold: 3
+# ============================================================================
+# Webhook Server TLS Certificates
+# ============================================================================
+# If you want to provide your own TLS certificates for the webhook server,
+# uncomment and configure the following:
+# webhookCerts:
+#   # Path to the directory containing certificates
+#   path: /tmp/k8s-webhook-server/serving-certs
+#   # Certificate file name
+#   certName: tls.crt
+#   # Key file name
+#   keyName: tls.key
 
-# Readiness probe configuration
-readinessProbe:
-  httpGet:
-    path: /readyz
-    port: 8081
-  initialDelaySeconds: 5
-  periodSeconds: 10
-  timeoutSeconds: 5
-  failureThreshold: 3
+# ============================================================================
+# Security Settings
+# ============================================================================
+# Enable HTTPS for metrics endpoint
+secureMetrics: true
 
-# Node selector for pod assignment
-nodeSelector: {}
+# Enable HTTP/2
+enableHTTP2: false
 
-# Tolerations for pod assignment
-tolerations: []
+# ============================================================================
+# Kubernetes Cluster Configuration
+# ============================================================================
+# Kubernetes cluster domain
+kubernetesClusterDomain: cluster.local
 
-# Affinity for pod assignment
-affinity: {}
+# ============================================================================
+# Global Settings
+# ============================================================================
+# Image pull secrets for private registries
+imagePullSecrets: []
+# - name: my-registry-secret
 
-# Priority class name for pods
-priorityClassName: ""
+# Name override
+nameOverride: ""
 
-# Operator configuration
-operator:
-  # Log level (debug, info, error)
-  logLevel: info
-  # Enable leader election for high availability
-  leaderElection:
-    enabled: true
-    # Lease duration for leader election
-    leaseDuration: 15s
-    # Renew deadline for leader election
-    renewDeadline: 10s
-    # Retry period for leader election
-    retryPeriod: 2s
-  # Namespaces to watch (empty = all namespaces)
-  watchNamespaces: []
-  # Example:
-  # watchNamespaces:
-  #   - default
-  #   - production
+# Full name override
+fullnameOverride: ""
 
-  # Sync period for reconciliation
-  syncPeriod: 10m
-
-  # Maximum concurrent reconciles
-  maxConcurrentReconciles: 1
-
-# Metrics configuration
-metrics:
-  # Enable Prometheus metrics
-  enabled: true
-  # Service port for metrics
-  port: 8080
-  # Path for metrics endpoint
-  path: /metrics
-
-# ServiceMonitor for Prometheus Operator
-serviceMonitor:
-  # Create ServiceMonitor resource
-  enabled: false
-  # Additional labels for ServiceMonitor
-  additionalLabels: {}
-  # Example:
-  # additionalLabels:
-  #   prometheus: kube-prometheus
-  # Scrape interval
-  interval: 30s
-  # Scrape timeout
-  scrapeTimeout: 10s
-  # Namespace where ServiceMonitor will be created
-  # If empty, it will be created in the same namespace as the operator
-  namespace: ""
-
-# CRD installation
-crds:
-  # Install CRDs as part of the chart
-  install: true
-  # Keep CRDs on chart uninstall
-  keep: true
-  # Annotations for CRD
-  annotations: {}
-
-# Global alert configuration (can be overridden per ReloaderConfig)
-alerts:
-  # Enable alerts globally
-  enabled: false
-  # Slack configuration
-  slack:
-    enabled: false
-    # Webhook URL (direct or from secret)
-    webhookURL: ""
-    # Reference to secret containing webhook URL
-    webhookURLSecret:
-      name: ""
-      key: ""
-    # Default channel (optional, overrides webhook default)
-    channel: ""
-    # Username for messages
-    username: "Reloader Operator"
-    # Icon for messages
-    icon: ":robot_face:"
-
-  # Microsoft Teams configuration
-  teams:
-    enabled: false
-    # Webhook URL (direct or from secret)
-    webhookURL: ""
-    # Reference to secret containing webhook URL
-    webhookURLSecret:
-      name: ""
-      key: ""
-
-  # Google Chat configuration
-  gchat:
-    enabled: false
-    # Webhook URL (direct or from secret)
-    webhookURL: ""
-    # Reference to secret containing webhook URL
-    webhookURLSecret:
-      name: ""
-      key: ""
-
-# Extra environment variables
-extraEnv: []
-# Example:
-# extraEnv:
-#   - name: CUSTOM_VAR
-#     value: "custom-value"
-#   - name: SECRET_VAR
-#     valueFrom:
-#       secretKeyRef:
-#         name: my-secret
-#         key: my-key
-
-# Extra volumes
-extraVolumes: []
-# Example:
-# extraVolumes:
-#   - name: config
-#     configMap:
-#       name: my-config
-
-# Extra volume mounts
-extraVolumeMounts: []
-# Example:
-# extraVolumeMounts:
-#   - name: config
-#     mountPath: /etc/config
-#     readOnly: true
-
-# Pod disruption budget
-podDisruptionBudget:
-  enabled: false
-  # minAvailable: 1
-  # maxUnavailable: 1
-
-# Horizontal pod autoscaler
-autoscaling:
-  enabled: false
-  minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 80
-  targetMemoryUtilizationPercentage: 80
-
-# Network policy
-networkPolicy:
-  enabled: false
-  # Ingress rules
-  ingress: []
-  # Egress rules
-  egress: []
-  # Pod selector
-  podSelector: {}
-
-# Additional labels to add to all resources
+# Additional labels to apply to all resources
 commonLabels: {}
 
-# Additional annotations to add to all resources
+# Additional annotations to apply to all resources
 commonAnnotations: {}

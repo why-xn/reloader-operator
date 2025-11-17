@@ -40,9 +40,6 @@ helm.sh/chart: {{ include "reloader-operator.chart" . }}
 app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
-{{- with .Values.commonLabels }}
-{{ toYaml . }}
-{{- end }}
 {{- end }}
 
 {{/*
@@ -57,67 +54,12 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 Create the name of the service account to use
 */}}
 {{- define "reloader-operator.serviceAccountName" -}}
-{{- if .Values.serviceAccount.create }}
-{{- default (include "reloader-operator.fullname" .) .Values.serviceAccount.name }}
+{{- $default := (include "reloader-operator.fullname" .) }}
+{{- with .Values.serviceAccount }}
+{{- if .create }}
+{{- default $default .name }}
 {{- else }}
-{{- default "default" .Values.serviceAccount.name }}
+{{- default "default" .name }}
 {{- end }}
-{{- end }}
-
-{{/*
-Create the name of the ClusterRole to use
-*/}}
-{{- define "reloader-operator.clusterRoleName" -}}
-{{- printf "%s-manager-role" (include "reloader-operator.fullname" .) }}
-{{- end }}
-
-{{/*
-Create the name of the ClusterRoleBinding to use
-*/}}
-{{- define "reloader-operator.clusterRoleBindingName" -}}
-{{- printf "%s-manager-rolebinding" (include "reloader-operator.fullname" .) }}
-{{- end }}
-
-{{/*
-Image name
-*/}}
-{{- define "reloader-operator.image" -}}
-{{- $tag := .Values.image.tag | default .Chart.AppVersion }}
-{{- printf "%s:%s" .Values.image.repository $tag }}
-{{- end }}
-
-{{/*
-Create common annotations
-*/}}
-{{- define "reloader-operator.annotations" -}}
-{{- with .Values.commonAnnotations }}
-{{ toYaml . }}
-{{- end }}
-{{- end }}
-
-{{/*
-Namespace list for watchNamespaces
-*/}}
-{{- define "reloader-operator.watchNamespaces" -}}
-{{- if .Values.operator.watchNamespaces }}
-{{- join "," .Values.operator.watchNamespaces }}
-{{- end }}
-{{- end }}
-
-{{/*
-Leader election config
-*/}}
-{{- define "reloader-operator.leaderElectionEnabled" -}}
-{{- .Values.operator.leaderElection.enabled | toString }}
-{{- end }}
-
-{{/*
-ServiceMonitor namespace
-*/}}
-{{- define "reloader-operator.serviceMonitorNamespace" -}}
-{{- if .Values.serviceMonitor.namespace }}
-{{- .Values.serviceMonitor.namespace }}
-{{- else }}
-{{- .Release.Namespace }}
 {{- end }}
 {{- end }}

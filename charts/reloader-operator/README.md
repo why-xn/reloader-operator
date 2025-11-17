@@ -2,15 +2,25 @@
 
 A Kubernetes operator that watches ConfigMaps and Secrets and automatically triggers rolling updates on workloads when they change.
 
+## Overview
+
+The Reloader Operator solves a common Kubernetes problem: workloads don't automatically restart when their ConfigMaps or Secrets are updated. This operator watches for changes and triggers reloads using various strategies.
+
 ## Features
 
-- 🔄 Automatic reload of workloads when ConfigMaps or Secrets change
-- 🎯 Dual configuration support (CRD-based and annotation-based)
-- 🔔 Multi-channel alerting (Slack, Microsoft Teams, Google Chat)
-- 📊 Prometheus metrics support
-- 🛡️ Secure by default with minimal RBAC permissions
-- 🚀 High availability with leader election
-- 📦 Support for Deployments, StatefulSets, DaemonSets, Argo Rollouts
+- **Flexible Watching**: Watch specific resources by name or use auto-reload for all referenced resources
+- **Multiple Reload Strategies**:
+  - `rollout`: Modify pod template to trigger rolling update (uses reload strategy)
+  - `restart`: Delete pods directly without template changes (GitOps-friendly)
+- **Template Modification Strategies** (when rollout strategy is used):
+  - `env-vars`: Update resource-specific environment variables
+  - `annotations`: Update pod template annotations
+- **Label-Based Filtering**: Filter resources by labels
+- **Cross-Namespace Watching**: Watch resources across multiple namespaces
+- **Targeted Reload**: Only reload workloads that actually reference changed resources
+- **Pause Periods**: Prevent cascading reloads with configurable pause periods
+- **Alert Integration**: Send alerts to Slack, Teams, Google Chat, or custom webhooks
+- **GitOps Compatible**: Works seamlessly with GitOps workflows
 
 ## Prerequisites
 
@@ -19,143 +29,177 @@ A Kubernetes operator that watches ConfigMaps and Secrets and automatically trig
 
 ## Installation
 
-### Quick Install
+### Add Helm Repository (if published)
 
 ```bash
-# Add the Helm repository (if published)
-helm repo add stakater https://stakater.github.io/stakater-charts
+helm repo add stakater https://stakater.github.io/charts
 helm repo update
-
-# Install the chart
-helm install reloader-operator stakater/reloader-operator --namespace reloader-system --create-namespace
 ```
 
 ### Install from Local Chart
 
 ```bash
-# Install from local directory
-helm install reloader-operator ./charts/reloader-operator --namespace reloader-system --create-namespace
+helm install reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --create-namespace
 ```
 
 ### Install with Custom Values
 
 ```bash
-# Production installation
 helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
+  --namespace reloader-operator-system \
   --create-namespace \
-  --values ./charts/reloader-operator/values-production.yaml
-
-# Development installation
-helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
-  --create-namespace \
-  --values ./charts/reloader-operator/values-development.yaml
-```
-
-### Install with Inline Values
-
-```bash
-helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
-  --create-namespace \
-  --set metrics.enabled=true \
-  --set serviceMonitor.enabled=true \
-  --set operator.logLevel=debug
-```
-
-## Upgrading
-
-```bash
-# Upgrade to a new version
-helm upgrade reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system
-
-# Upgrade with new values
-helm upgrade reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
-  --values custom-values.yaml
-```
-
-## Uninstalling
-
-```bash
-# Uninstall the chart
-helm uninstall reloader-operator --namespace reloader-system
-
-# Note: CRDs are NOT removed by default
-# To remove CRDs manually:
-kubectl delete crd reloaderconfigs.reloader.stakater.com
+  --values my-values.yaml
 ```
 
 ## Configuration
 
-### Key Configuration Parameters
+### Basic Configuration
 
 | Parameter | Description | Default |
 |-----------|-------------|---------|
-| `replicaCount` | Number of operator replicas | `1` |
-| `image.repository` | Container image repository | `stakater/reloader-operator` |
-| `image.tag` | Container image tag | `""` (uses chart appVersion) |
-| `image.pullPolicy` | Image pull policy | `IfNotPresent` |
-| `operator.logLevel` | Log level (debug, info, error) | `info` |
-| `operator.leaderElection.enabled` | Enable leader election for HA | `true` |
-| `operator.watchNamespaces` | Namespaces to watch (empty = all) | `[]` |
-| `operator.syncPeriod` | Reconciliation sync period | `10m` |
-| `metrics.enabled` | Enable Prometheus metrics | `true` |
-| `metrics.port` | Metrics port | `8080` |
-| `serviceMonitor.enabled` | Create ServiceMonitor for Prometheus Operator | `false` |
-| `resources.limits.cpu` | CPU limit | `500m` |
-| `resources.limits.memory` | Memory limit | `256Mi` |
-| `resources.requests.cpu` | CPU request | `100m` |
-| `resources.requests.memory` | Memory request | `64Mi` |
+| `controllerManager.replicas` | Number of controller replicas | `1` |
+| `controllerManager.manager.image.repository` | Container image repository | `stakater/reloader-operator` |
+| `controllerManager.manager.image.tag` | Container image tag | `v2.0.0` |
+| `controllerManager.manager.image.pullPolicy` | Image pull policy | `IfNotPresent` |
 
-### RBAC Configuration
+### Operator Arguments
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `serviceAccount.create` | Create service account | `true` |
-| `serviceAccount.name` | Service account name | `""` (generated) |
-| `serviceAccount.annotations` | Service account annotations | `{}` |
-| `rbac.create` | Create RBAC resources | `true` |
-| `rbac.annotations` | RBAC annotations | `{}` |
+Configure operator behavior through `controllerManager.manager.args`:
 
-### Alerting Configuration
+```yaml
+controllerManager:
+  manager:
+    args:
+      - --metrics-bind-address=:8443
+      - --leader-elect
+      - --reload-on-create=true
+      - --reload-on-delete=false
+      - --rollout-strategy=rollout
+      - --reload-strategy=env-vars
+```
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `alerts.enabled` | Enable alerting | `false` |
-| `alerts.slack.enabled` | Enable Slack alerts | `false` |
-| `alerts.slack.webhookURL` | Slack webhook URL (direct) | `""` |
-| `alerts.slack.webhookURLSecret.name` | Secret containing webhook URL | `""` |
-| `alerts.slack.webhookURLSecret.key` | Key in secret | `""` |
-| `alerts.slack.channel` | Slack channel override | `""` |
-| `alerts.slack.username` | Slack username | `"Reloader Operator"` |
-| `alerts.teams.enabled` | Enable Teams alerts | `false` |
-| `alerts.teams.webhookURL` | Teams webhook URL | `""` |
-| `alerts.gchat.enabled` | Enable Google Chat alerts | `false` |
-| `alerts.gchat.webhookURL` | Google Chat webhook URL | `""` |
+| Argument | Description | Default |
+|----------|-------------|---------|
+| `--metrics-bind-address` | Metrics server address (`:8443` for HTTPS, `:8080` for HTTP, `0` to disable) | `:8443` |
+| `--leader-elect` | Enable leader election for HA | `true` |
+| `--health-probe-bind-address` | Health probe endpoint address | `:8081` |
+| `--reload-on-create` | Reload when watched resources are created | `false` |
+| `--reload-on-delete` | Reload when watched resources are deleted | `false` |
+| `--rollout-strategy` | Global rollout strategy: `rollout` or `restart` | `rollout` |
+| `--reload-strategy` | Global reload strategy: `env-vars` or `annotations` | `env-vars` |
+| `--alert-on-reload` | Enable alerts when reloads occur | `false` |
+| `--alert-sink` | Alert destination: `slack`, `teams`, `gchat`, `webhook` | `webhook` |
+| `--alert-webhook-url` | Webhook URL for alerts | - |
+| `--alert-additional-info` | Additional context for alert messages | - |
+| `--resource-label-selector` | Label selector for resources (e.g., `app=myapp`) | - |
+| `--namespace-selector` | Namespace label selector | - |
+| `--namespaces-to-ignore` | Comma-separated list of namespaces to ignore | - |
 
-### High Availability Configuration
+### Resource Limits
 
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `podDisruptionBudget.enabled` | Create PodDisruptionBudget | `false` |
-| `podDisruptionBudget.minAvailable` | Minimum available pods | `1` |
-| `autoscaling.enabled` | Enable HPA | `false` |
-| `autoscaling.minReplicas` | Minimum replicas | `1` |
-| `autoscaling.maxReplicas` | Maximum replicas | `3` |
-| `autoscaling.targetCPUUtilizationPercentage` | Target CPU utilization | `80` |
+```yaml
+controllerManager:
+  manager:
+    resources:
+      limits:
+        cpu: 500m
+        memory: 128Mi
+      requests:
+        cpu: 10m
+        memory: 64Mi
+```
 
-### Full Values Documentation
+### Security Configuration
 
-See [values.yaml](values.yaml) for all available configuration options.
+```yaml
+controllerManager:
+  manager:
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+      runAsNonRoot: true
+      runAsUser: 65532
+
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    fsGroup: 65532
+    seccompProfile:
+      type: RuntimeDefault
+```
+
+### Service Account
+
+```yaml
+serviceAccount:
+  # Create service account
+  create: true
+  # Service account annotations (e.g., for IRSA)
+  annotations:
+    eks.amazonaws.com/role-arn: arn:aws:iam::123456789012:role/reloader-operator
+  # Service account name
+  name: ""
+```
+
+### RBAC
+
+```yaml
+rbac:
+  # Create RBAC resources
+  create: true
+  annotations: {}
+```
+
+### Metrics Service
+
+```yaml
+metricsService:
+  type: ClusterIP
+  ports:
+    - name: https
+      port: 8443
+      protocol: TCP
+      targetPort: 8443
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8443"
+    prometheus.io/scheme: "https"
+```
+
+### Node Scheduling
+
+```yaml
+controllerManager:
+  # Node selector
+  nodeSelector:
+    kubernetes.io/os: linux
+
+  # Tolerations
+  tolerations:
+    - key: "node-role.kubernetes.io/control-plane"
+      operator: "Exists"
+      effect: "NoSchedule"
+
+  # Affinity
+  affinity:
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchLabels:
+                app.kubernetes.io/name: reloader-operator
+            topologyKey: kubernetes.io/hostname
+```
 
 ## Usage Examples
 
-### Example 1: CRD-Based Configuration
-
-Create a ReloaderConfig resource:
+### Example 1: Basic ReloaderConfig
 
 ```yaml
 apiVersion: reloader.stakater.com/v1alpha1
@@ -166,240 +210,186 @@ metadata:
 spec:
   watchedResources:
     secrets:
-      - my-app-secret
+      - db-credentials
     configMaps:
-      - my-app-config
+      - app-config
+
   targets:
     - kind: Deployment
-      name: my-app
-      reloadStrategy: env-vars
+      name: web-app
 ```
 
-### Example 2: Annotation-Based Configuration
-
-Annotate your workload:
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    secret.reloader.stakater.com/reload: "my-app-secret"
-    configmap.reloader.stakater.com/reload: "my-app-config"
-spec:
-  # ... deployment spec
-```
-
-### Example 3: Auto-Reload All Resources
+### Example 2: Auto-Reload All Referenced Resources
 
 ```yaml
 apiVersion: reloader.stakater.com/v1alpha1
 kind: ReloaderConfig
 metadata:
-  name: namespace-auto-reload
+  name: auto-reload
   namespace: production
 spec:
   autoReloadAll: true
+  rolloutStrategy: restart  # GitOps-friendly
+
   targets:
     - kind: Deployment
-      selector:
-        matchLabels:
-          auto-reload: "true"
+      name: frontend
+    - kind: StatefulSet
+      name: backend
 ```
 
-### Example 4: With Alerting
+### Example 3: Advanced Configuration
 
 ```yaml
 apiVersion: reloader.stakater.com/v1alpha1
 kind: ReloaderConfig
 metadata:
-  name: critical-app-reloader
-  namespace: production
+  name: advanced
+  namespace: staging
 spec:
   watchedResources:
     secrets:
-      - database-credentials
+      - database-creds
+    configMaps:
+      - app-config
+    resourceSelector:
+      matchLabels:
+        managed-by: reloader
+    enableTargetedReload: true
+
+  rolloutStrategy: rollout
+  reloadStrategy: annotations
+
   targets:
+    - kind: Deployment
+      name: web-server
+      reloadStrategy: annotations
+      requireReference: true
+      pausePeriod: 5m
+
     - kind: StatefulSet
-      name: database
-  alerts:
-    - type: slack
-      webhookURLFrom:
-        secretKeyRef:
-          name: slack-webhook
-          key: url
-      channel: "#production-alerts"
+      name: cache
+      rolloutStrategy: restart
+      pausePeriod: 10m
+
+  ignoreResources:
+    - kind: Secret
+      name: default-token-xyz
 ```
 
-## Production Deployment
+## Installation Examples
 
-For production deployments, use the production values file:
+### Production Setup with Alerts
 
 ```bash
 helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
+  --namespace reloader-operator-system \
   --create-namespace \
-  --values ./charts/reloader-operator/values-production.yaml \
-  --set alerts.slack.webhookURLSecret.name=slack-webhook \
-  --set alerts.slack.webhookURLSecret.key=webhook-url
+  --set controllerManager.manager.args[6]="--alert-on-reload=true" \
+  --set controllerManager.manager.args[7]="--alert-sink=slack" \
+  --set controllerManager.manager.args[8]="--alert-webhook-url=https://hooks.slack.com/..." \
+  --set controllerManager.manager.args[9]="--alert-additional-info=Cluster: production"
 ```
 
-### Production Checklist
+### GitOps-Friendly Setup
 
-- [ ] Enable metrics and ServiceMonitor
-- [ ] Configure PodDisruptionBudget
-- [ ] Set appropriate resource limits
-- [ ] Enable leader election (HA)
-- [ ] Configure alerting webhooks
-- [ ] Set up monitoring and alerts
-- [ ] Use specific namespace watching if possible
-- [ ] Configure network policies
-- [ ] Set priority class for critical workloads
+```bash
+helm install reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --create-namespace \
+  --set controllerManager.manager.args[6]="--rollout-strategy=restart" \
+  --set controllerManager.manager.args[7]="--reload-on-create=true"
+```
+
+### High Availability Setup
+
+```bash
+helm install reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --create-namespace \
+  --set controllerManager.replicas=3 \
+  --set controllerManager.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].labelSelector.matchLabels.app\.kubernetes\.io/name=reloader-operator \
+  --set controllerManager.affinity.podAntiAffinity.requiredDuringSchedulingIgnoredDuringExecution[0].topologyKey=kubernetes.io/hostname
+```
+
+## Upgrade
+
+```bash
+helm upgrade reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --values my-values.yaml
+```
+
+## Uninstall
+
+```bash
+helm uninstall reloader-operator --namespace reloader-operator-system
+```
+
+**Note**: This will not delete ReloaderConfig CRDs. To remove them:
+
+```bash
+kubectl delete crd reloaderconfigs.reloader.stakater.com
+```
 
 ## Monitoring
 
-### Prometheus Metrics
+The operator exposes Prometheus metrics on the configured metrics endpoint (default: `:8443/metrics`).
 
-The operator exposes Prometheus metrics at `/metrics`:
+### ServiceMonitor Example (Prometheus Operator)
 
 ```yaml
-# Enable metrics
-metrics:
-  enabled: true
-  port: 8080
-
-# Enable ServiceMonitor for Prometheus Operator
-serviceMonitor:
-  enabled: true
-  additionalLabels:
-    prometheus: kube-prometheus
-  interval: 30s
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: reloader-operator
+  namespace: reloader-operator-system
+spec:
+  selector:
+    matchLabels:
+      control-plane: controller-manager
+  endpoints:
+    - port: https
+      scheme: https
+      tlsConfig:
+        insecureSkipVerify: true
 ```
-
-### Available Metrics
-
-- `reloader_reloads_total` - Total number of reloads triggered
-- `reloader_reload_errors_total` - Total number of reload errors
-- `reloader_watched_resources` - Number of watched resources
-- `reloader_last_reload_timestamp` - Timestamp of last reload
 
 ## Troubleshooting
 
-### Operator Not Starting
+### Check Operator Logs
 
 ```bash
-# Check pod status
-kubectl get pods -n reloader-system
-
-# Check logs
-kubectl logs -n reloader-system deployment/reloader-operator-controller-manager
-
-# Check events
-kubectl get events -n reloader-system
+kubectl logs -n reloader-operator-system -l control-plane=controller-manager -f
 ```
 
-### Reloads Not Triggering
-
-1. Check operator logs for errors
-2. Verify RBAC permissions
-3. Ensure workload is in the same namespace as watched resources
-4. Check ReloaderConfig status:
-   ```bash
-   kubectl get reloaderconfig -o yaml
-   ```
-
-### CRD Issues
+### Check ReloaderConfig Status
 
 ```bash
-# Check if CRD is installed
-kubectl get crd reloaderconfigs.reloader.stakater.com
-
-# Reinstall CRDs
-kubectl apply -f charts/reloader-operator/crds/
+kubectl get reloaderconfig -A
+kubectl describe reloaderconfig <name> -n <namespace>
 ```
 
-## Development
-
-### Testing the Chart
+### Verify RBAC Permissions
 
 ```bash
-# Lint the chart
-helm lint ./charts/reloader-operator
-
-# Dry run installation
-helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
-  --dry-run --debug
-
-# Template and review manifests
-helm template reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system > output.yaml
+kubectl auth can-i get secrets --as=system:serviceaccount:reloader-operator-system:reloader-operator-controller-manager
+kubectl auth can-i get configmaps --as=system:serviceaccount:reloader-operator-system:reloader-operator-controller-manager
 ```
 
-### Local Development
+### Check Metrics
 
 ```bash
-# Install with development values
-helm install reloader-operator ./charts/reloader-operator \
-  --namespace reloader-system \
-  --create-namespace \
-  --values ./charts/reloader-operator/values-development.yaml
-
-# Watch logs
-kubectl logs -n reloader-system deployment/reloader-operator-controller-manager -f
+kubectl port-forward -n reloader-operator-system svc/reloader-operator-controller-manager-metrics-service 8443:8443
+curl -k https://localhost:8443/metrics
 ```
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                   Reloader Operator                     │
-│                                                         │
-│  ┌──────────────┐    ┌──────────────┐                 │
-│  │   Secret     │───▶│  Controller  │                 │
-│  │   Watcher    │    │              │                 │
-│  └──────────────┘    │  - Detects   │                 │
-│                      │    changes   │                 │
-│  ┌──────────────┐    │  - Finds     │                 │
-│  │  ConfigMap   │───▶│    targets   │                 │
-│  │   Watcher    │    │  - Triggers  │                 │
-│  └──────────────┘    │    reloads   │                 │
-│                      └──────┬───────┘                 │
-│                             │                          │
-│                             ▼                          │
-│                      ┌──────────────┐                 │
-│                      │  Workload    │                 │
-│                      │  Updater     │                 │
-│                      └──────┬───────┘                 │
-└─────────────────────────────┼────────────────────────┘
-                              │
-                              ▼
-                    ┌─────────────────┐
-                    │   Deployments   │
-                    │  StatefulSets   │
-                    │   DaemonSets    │
-                    │  Argo Rollouts  │
-                    └─────────────────┘
-```
-
-## Contributing
-
-Contributions are welcome! Please see [CONTRIBUTING.md](../../CONTRIBUTING.md) for details.
-
-## License
-
-Apache 2.0 License - see [LICENSE](../../LICENSE) for details.
 
 ## Support
 
-- GitHub Issues: https://github.com/stakater/Reloader/issues
-- Documentation: https://github.com/stakater/Reloader/tree/master/docs
-- Website: https://www.stakater.com
+- **Issues**: https://github.com/stakater/Reloader/issues
+- **Documentation**: https://github.com/stakater/Reloader
+- **Email**: hello@stakater.com
 
-## Links
+## License
 
-- [Source Code](https://github.com/stakater/Reloader)
-- [CRD Schema Documentation](../../docs/CRD_SCHEMA.md)
-- [Setup Guide](../../docs/SETUP_GUIDE.md)
-- [Alerting Guide](../../docs/ALERTING_GUIDE.md)
+Apache License 2.0 - see LICENSE file for details

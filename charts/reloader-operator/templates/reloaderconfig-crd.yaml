@@ -1,10 +1,11 @@
----
 apiVersion: apiextensions.k8s.io/v1
 kind: CustomResourceDefinition
 metadata:
+  name: reloaderconfigs.reloader.stakater.com
   annotations:
     controller-gen.kubebuilder.io/version: v0.19.0
-  name: reloaderconfigs.reloader.stakater.com
+  labels:
+  {{- include "reloader-operator.labels" . | nindent 4 }}
 spec:
   group: reloader.stakater.com
   names:
@@ -71,8 +72,7 @@ spec:
                 description: IgnoreResources specifies resources that should be ignored
                   even if they match watch criteria
                 items:
-                  description: ResourceReference identifies a specific Kubernetes
-                    resource
+                  description: ResourceReference identifies a specific Kubernetes resource
                   properties:
                     kind:
                       description: Kind of the resource (Secret or ConfigMap)
@@ -101,25 +101,35 @@ spec:
               reloadStrategy:
                 default: env-vars
                 description: |-
-                  ReloadStrategy specifies how to trigger rolling updates
-                  Valid values are: "env-vars" (default), "annotations", "restart"
-                  - env-vars: Updates a dummy environment variable to trigger pod restart
+                  ReloadStrategy specifies how to modify pod template when RolloutStrategy is "rollout"
+                  Valid values are: "env-vars" (default), "annotations"
+                  - env-vars: Updates resource-specific environment variable (e.g., STAKATER_DB_CREDENTIALS_SECRET)
                   - annotations: Updates pod template annotations (better for GitOps)
-                  - restart: Deletes pods without modifying template (most GitOps-friendly)
+                  This field is ignored when RolloutStrategy is "restart"
                 enum:
                 - env-vars
                 - annotations
+                type: string
+              rolloutStrategy:
+                default: rollout
+                description: |-
+                  RolloutStrategy specifies how to deploy the change to workloads
+                  Valid values are: "rollout" (default), "restart"
+                  - rollout: Modifies pod template to trigger rolling update (uses ReloadStrategy)
+                  - restart: Deletes pods directly without modifying template (most GitOps-friendly)
+                enum:
+                - rollout
                 - restart
                 type: string
               targets:
-                description: Targets specifies which workloads should be reloaded
-                  when watched resources change
+                description: Targets specifies which workloads should be reloaded when
+                  watched resources change
                 items:
                   description: TargetWorkload defines a workload that should be reloaded
                   properties:
                     kind:
-                      description: Kind of the workload (Deployment, StatefulSet,
-                        DaemonSet, DeploymentConfig, Rollout)
+                      description: Kind of the workload (Deployment, StatefulSet, DaemonSet,
+                        DeploymentConfig, Rollout)
                       enum:
                       - Deployment
                       - StatefulSet
@@ -142,12 +152,12 @@ spec:
                       pattern: ^([0-9]+(\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$
                       type: string
                     reloadStrategy:
-                      description: ReloadStrategy overrides the global reload strategy
-                        for this specific workload
+                      description: |-
+                        ReloadStrategy overrides the global reload strategy for this specific workload
+                        Only applies when RolloutStrategy is "rollout"
                       enum:
                       - env-vars
                       - annotations
-                      - restart
                       type: string
                     requireReference:
                       description: |-
@@ -157,6 +167,13 @@ spec:
                         2. The workload's pod spec actually references the changed resource
                         This allows fine-grained control over which targets reload for which resources
                       type: boolean
+                    rolloutStrategy:
+                      description: RolloutStrategy overrides the global rollout strategy
+                        for this specific workload
+                      enum:
+                      - rollout
+                      - restart
+                      type: string
                   required:
                   - kind
                   - name
@@ -185,16 +202,16 @@ spec:
                       namespaces
                     properties:
                       matchExpressions:
-                        description: matchExpressions is a list of label selector
-                          requirements. The requirements are ANDed.
+                        description: matchExpressions is a list of label selector requirements.
+                          The requirements are ANDed.
                         items:
                           description: |-
                             A label selector requirement is a selector that contains values, a key, and an operator that
                             relates the key and values.
                           properties:
                             key:
-                              description: key is the label key that the selector
-                                applies to.
+                              description: key is the label key that the selector applies
+                                to.
                               type: string
                             operator:
                               description: |-
@@ -231,16 +248,16 @@ spec:
                     description: ResourceSelector allows filtering resources by labels
                     properties:
                       matchExpressions:
-                        description: matchExpressions is a list of label selector
-                          requirements. The requirements are ANDed.
+                        description: matchExpressions is a list of label selector requirements.
+                          The requirements are ANDed.
                         items:
                           description: |-
                             A label selector requirement is a selector that contains values, a key, and an operator that
                             relates the key and values.
                           properties:
                             key:
-                              description: key is the label key that the selector
-                                applies to.
+                              description: key is the label key that the selector applies
+                                to.
                               type: string
                             operator:
                               description: |-
@@ -287,12 +304,12 @@ spec:
                 description: |-
                   conditions represent the current state of the ReloaderConfig resource.
                   Each condition has a unique type and reflects the status of a specific aspect of the resource.
-
+  
                   Standard condition types include:
                   - "Available": the resource is fully functional
                   - "Progressing": the resource is being created or updated
                   - "Degraded": the resource failed to reach or maintain its desired state
-
+  
                   The status of each condition is one of True, False, or Unknown.
                 items:
                   description: Condition contains details for one aspect of the current
@@ -363,15 +380,15 @@ spec:
                 format: int64
                 type: integer
               reloadCount:
-                description: ReloadCount is the total number of reloads triggered
-                  by this configuration
+                description: ReloadCount is the total number of reloads triggered by
+                  this configuration
                 format: int64
                 type: integer
               targetStatus:
                 description: TargetStatus tracks the status of each target workload
                 items:
-                  description: TargetWorkloadStatus tracks the reload status of a
-                    specific workload
+                  description: TargetWorkloadStatus tracks the reload status of a specific
+                    workload
                   properties:
                     kind:
                       description: Kind of the workload
@@ -421,3 +438,9 @@ spec:
     storage: true
     subresources:
       status: {}
+status:
+  acceptedNames:
+    kind: ""
+    plural: ""
+  conditions: []
+  storedVersions: []

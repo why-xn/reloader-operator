@@ -1,0 +1,21 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "reloader-operator.fullname" . }}-reloaderconfig-viewer-role
+  labels:
+  {{- include "reloader-operator.labels" . | nindent 4 }}
+rules:
+- apiGroups:
+  - reloader.stakater.com
+  resources:
+  - reloaderconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - reloader.stakater.com
+  resources:
+  - reloaderconfigs/status
+  verbs:
+  - get

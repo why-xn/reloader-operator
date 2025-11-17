@@ -2,7 +2,11 @@ apiVersion: v2
 name: reloader-operator
 description: A Kubernetes operator that watches ConfigMaps and Secrets and triggers rolling updates on workloads when they change
 type: application
+
+# Chart version - increment when making changes to the chart
 version: 2.0.0
+
+# Application version - should match the operator version
 appVersion: "2.0.0"
 
 keywords:
@@ -12,6 +16,8 @@ keywords:
   - configmap
   - secret
   - rolling-update
+  - automation
+  - gitops
 
 home: https://github.com/stakater/Reloader
 sources:
@@ -30,3 +36,13 @@ kubeVersion: ">=1.19.0-0"
 annotations:
   category: Operators
   licenses: Apache-2.0
+  operator.stakater.com/description: "Automatically reloads workloads when ConfigMaps or Secrets change"
+  operator.stakater.com/features: |
+    - Watch specific ConfigMaps and Secrets
+    - Auto-reload all referenced resources
+    - Multiple reload strategies (rollout, restart, env-vars, annotations)
+    - Label-based resource filtering
+    - Cross-namespace watching
+    - Pause periods to prevent cascading reloads
+    - GitOps-friendly operation
+    - Alert integration (Slack, Teams, Google Chat, Webhook)
