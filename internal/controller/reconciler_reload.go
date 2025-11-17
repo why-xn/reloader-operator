@@ -62,6 +62,7 @@ func (r *ReloaderConfigReconciler) executeReloads(
 	targets []workload.Target,
 	resourceKind string,
 	resourceName string,
+	resourceNamespace string,
 	resourceHash string,
 ) int {
 	logger := log.FromContext(ctx)
@@ -102,7 +103,7 @@ func (r *ReloaderConfigReconciler) executeReloads(
 		}
 
 		// Trigger the reload (rolling restart)
-		err = r.WorkloadUpdater.TriggerReload(ctx, target, resourceHash)
+		err = r.WorkloadUpdater.TriggerReload(ctx, target, resourceKind, resourceName, resourceNamespace, resourceHash)
 		if err != nil {
 			// Reload failed - log error, send alert, update status
 			logger.Error(err, "Failed to reload workload",

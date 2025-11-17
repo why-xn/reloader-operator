@@ -17,6 +17,7 @@ limitations under the License.
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -24,14 +25,14 @@ import (
 
 const (
 	// Annotations used by Reloader
-	AnnotationLastHash       = "reloader.stakater.com/last-hash"
-	AnnotationAuto           = "reloader.stakater.com/auto"
-	AnnotationSearch         = "reloader.stakater.com/search"
-	AnnotationMatch          = "reloader.stakater.com/match"
-	AnnotationIgnore         = "reloader.stakater.com/ignore"
-	AnnotationReloadStrategy = "reloader.stakater.com/rollout-strategy"
-	AnnotationLastReload     = "reloader.stakater.com/last-reload"
-	AnnotationResourceHash   = "reloader.stakater.com/resource-hash"
+	AnnotationLastHash         = "reloader.stakater.com/last-hash"
+	AnnotationAuto             = "reloader.stakater.com/auto"
+	AnnotationSearch           = "reloader.stakater.com/search"
+	AnnotationMatch            = "reloader.stakater.com/match"
+	AnnotationIgnore           = "reloader.stakater.com/ignore"
+	AnnotationReloadStrategy   = "reloader.stakater.com/rollout-strategy"
+	AnnotationLastReload       = "reloader.stakater.com/last-reload"
+	AnnotationLastReloadedFrom = "reloader.stakater.com/last-reloaded-from"
 
 	// Type-specific annotations
 	AnnotationSecretReload    = "secret.reloader.stakater.com/reload"
@@ -101,6 +102,34 @@ func GetDefaultStrategy(targetStrategy, defaultStrategy string) string {
 		return NormalizeStrategy(defaultStrategy)
 	}
 	return ReloadStrategyEnvVars // ultimate default
+}
+
+// ReloadSource represents the source resource that triggered a reload
+type ReloadSource struct {
+	Kind      string `json:"kind"`
+	Name      string `json:"name"`
+	Namespace string `json:"namespace"`
+	Hash      string `json:"hash"`
+}
+
+// CreateReloadSourceAnnotation creates a JSON annotation value for the last reloaded resource
+// This matches the original Reloader's behavior of storing metadata about the trigger resource
+func CreateReloadSourceAnnotation(kind, name, namespace, hash string) string {
+	source := ReloadSource{
+		Kind:      kind,
+		Name:      name,
+		Namespace: namespace,
+		Hash:      hash,
+	}
+
+	// Marshal to JSON - ignore errors and return empty string if it fails
+	// (this is unlikely to fail with simple string fields)
+	jsonData, err := json.Marshal(source)
+	if err != nil {
+		return ""
+	}
+
+	return string(jsonData)
 }
 
 // ParseCommaSeparatedList parses a comma-separated string into a list of trimmed strings

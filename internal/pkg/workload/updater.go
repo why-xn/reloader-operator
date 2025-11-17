@@ -41,7 +41,7 @@ func NewUpdater(c client.Client) *Updater {
 }
 
 // TriggerReload triggers a rolling update of a workload
-func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceHash string) error {
+func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceKind, resourceName, resourceNamespace, resourceHash string) error {
 	logger := log.FromContext(ctx)
 
 	strategy := target.ReloadStrategy
@@ -56,18 +56,22 @@ func (u *Updater) TriggerReload(ctx context.Context, target Target, resourceHash
 		"kind", target.Kind,
 		"name", target.Name,
 		"namespace", target.Namespace,
-		"strategy", strategy)
+		"strategy", strategy,
+		"triggerResource", fmt.Sprintf("%s/%s", resourceKind, resourceName))
+
+	// Create reload source JSON annotation
+	reloadSourceJSON := util.CreateReloadSourceAnnotation(resourceKind, resourceName, resourceNamespace, resourceHash)
 
 	var err error
 	switch target.Kind {
 	case util.KindDeployment:
-		err = u.reloadDeployment(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadDeployment(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
 
 	case util.KindStatefulSet:
-		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadStatefulSet(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
 
 	case util.KindDaemonSet:
-		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, strategy, resourceHash)
+		err = u.reloadDaemonSet(ctx, target.Name, target.Namespace, strategy, reloadSourceJSON)
 
 	default:
 		return fmt.Errorf("unsupported workload kind: %s", target.Kind)
@@ -143,7 +147,7 @@ func (u *Updater) TriggerDeleteReload(ctx context.Context, target Target, resour
 // reloadDeployment triggers a rolling update of a Deployment
 func (u *Updater) reloadDeployment(
 	ctx context.Context,
-	name, namespace, strategy, hash string,
+	name, namespace, strategy, reloadSourceJSON string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -160,7 +164,7 @@ func (u *Updater) reloadDeployment(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, hash); err != nil {
+	if err := applyReloadStrategy(&deployment.Spec.Template, strategy, reloadSourceJSON); err != nil {
 		return err
 	}
 
@@ -179,7 +183,7 @@ func (u *Updater) reloadDeployment(
 // reloadStatefulSet triggers a rolling update of a StatefulSet
 func (u *Updater) reloadStatefulSet(
 	ctx context.Context,
-	name, namespace, strategy, hash string,
+	name, namespace, strategy, reloadSourceJSON string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -196,7 +200,7 @@ func (u *Updater) reloadStatefulSet(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, hash); err != nil {
+	if err := applyReloadStrategy(&statefulSet.Spec.Template, strategy, reloadSourceJSON); err != nil {
 		return err
 	}
 
@@ -215,7 +219,7 @@ func (u *Updater) reloadStatefulSet(
 // reloadDaemonSet triggers a rolling update of a DaemonSet
 func (u *Updater) reloadDaemonSet(
 	ctx context.Context,
-	name, namespace, strategy, hash string,
+	name, namespace, strategy, reloadSourceJSON string,
 ) error {
 	logger := log.FromContext(ctx)
 
@@ -232,7 +236,7 @@ func (u *Updater) reloadDaemonSet(
 	}
 
 	// Apply the reload strategy (env-vars or annotations)
-	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, hash); err != nil {
+	if err := applyReloadStrategy(&daemonSet.Spec.Template, strategy, reloadSourceJSON); err != nil {
 		return err
 	}
 
@@ -357,15 +361,15 @@ func (u *Updater) reloadDeleteDaemonSet(
 }
 
 // applyReloadStrategy applies the chosen reload strategy to a pod template
-func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, hash string) error {
+func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, reloadSourceJSON string) error {
 	timestamp := time.Now().Format(time.RFC3339)
 
 	switch strategy {
 	case util.ReloadStrategyEnvVars:
-		return applyEnvVarsStrategy(template, timestamp, hash)
+		return applyEnvVarsStrategy(template, timestamp, reloadSourceJSON)
 
 	case util.ReloadStrategyAnnotations:
-		return applyAnnotationsStrategy(template, timestamp, hash)
+		return applyAnnotationsStrategy(template, timestamp, reloadSourceJSON)
 
 	default:
 		return fmt.Errorf("unknown reload strategy: %s", strategy)
@@ -373,7 +377,7 @@ func applyReloadStrategy(template *corev1.PodTemplateSpec, strategy, hash string
 }
 
 // applyEnvVarsStrategy updates a dummy environment variable to trigger pod restart
-func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, hash string) error {
+func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, reloadSourceJSON string) error {
 	// Ensure we have at least one container
 	if len(template.Spec.Containers) == 0 {
 		return fmt.Errorf("no containers found in pod template")
@@ -399,24 +403,24 @@ func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, hash stri
 		})
 	}
 
-	// Also add hash annotation to pod template for tracking
+	// Add last-reloaded-from annotation with resource metadata (matches original Reloader)
 	if template.Annotations == nil {
 		template.Annotations = make(map[string]string)
 	}
-	template.Annotations[util.AnnotationResourceHash] = hash
+	template.Annotations[util.AnnotationLastReloadedFrom] = reloadSourceJSON
 
 	return nil
 }
 
 // applyAnnotationsStrategy updates pod template annotations to trigger pod restart
-func applyAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp, hash string) error {
+func applyAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp, reloadSourceJSON string) error {
 	if template.Annotations == nil {
 		template.Annotations = make(map[string]string)
 	}
 
 	// Update annotations
 	template.Annotations[util.AnnotationLastReload] = timestamp
-	template.Annotations[util.AnnotationResourceHash] = hash
+	template.Annotations[util.AnnotationLastReloadedFrom] = reloadSourceJSON
 
 	return nil
 }
@@ -476,7 +480,7 @@ func applyDeleteEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp stri
 
 	// Remove hash annotation from pod template
 	if template.Annotations != nil {
-		delete(template.Annotations, util.AnnotationResourceHash)
+		delete(template.Annotations, util.AnnotationLastReloadedFrom)
 	}
 
 	return nil
@@ -493,7 +497,7 @@ func applyDeleteAnnotationsStrategy(template *corev1.PodTemplateSpec, timestamp 
 	template.Annotations[util.AnnotationLastReload] = timestamp
 
 	// Remove the resource hash annotation (resource no longer exists)
-	delete(template.Annotations, util.AnnotationResourceHash)
+	delete(template.Annotations, util.AnnotationLastReloadedFrom)
 
 	return nil
 }

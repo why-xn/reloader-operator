@@ -18,6 +18,7 @@ package workload
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -71,7 +72,7 @@ func TestTriggerReloadEnvVarsStrategy(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyEnvVars,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "db-secret", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -101,14 +102,19 @@ func TestTriggerReloadEnvVarsStrategy(t *testing.T) {
 		t.Error("RELOADER_TRIGGERED_AT env var not found in deployment")
 	}
 
-	// Check that hash annotation was added
+	// Check that reload source annotation was added with JSON format
 	if updatedDeployment.Spec.Template.Annotations == nil {
 		t.Fatal("pod template annotations should not be nil")
 	}
 
-	if updatedDeployment.Spec.Template.Annotations[util.AnnotationResourceHash] != "test-hash" {
-		t.Errorf("expected hash annotation 'test-hash', got '%s'",
-			updatedDeployment.Spec.Template.Annotations[util.AnnotationResourceHash])
+	reloadSourceJSON := updatedDeployment.Spec.Template.Annotations[util.AnnotationLastReloadedFrom]
+	if reloadSourceJSON == "" {
+		t.Error("reload source annotation not found in pod template")
+	}
+
+	// Verify it contains JSON with expected fields
+	if !strings.Contains(reloadSourceJSON, "\"kind\":\"Secret\"") || !strings.Contains(reloadSourceJSON, "\"name\":\"db-secret\"") {
+		t.Errorf("expected JSON metadata in annotation, got '%s'", reloadSourceJSON)
 	}
 }
 
@@ -152,7 +158,7 @@ func TestTriggerReloadAnnotationsStrategy(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyAnnotations,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "app-config", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -176,10 +182,15 @@ func TestTriggerReloadAnnotationsStrategy(t *testing.T) {
 		t.Error("LAST_RELOAD annotation not found in pod template")
 	}
 
-	// Check that hash annotation was added
-	if updatedDeployment.Spec.Template.Annotations[util.AnnotationResourceHash] != "test-hash" {
-		t.Errorf("expected hash annotation 'test-hash', got '%s'",
-			updatedDeployment.Spec.Template.Annotations[util.AnnotationResourceHash])
+	// Check that reload source annotation was added with JSON format
+	reloadSourceJSON := updatedDeployment.Spec.Template.Annotations[util.AnnotationLastReloadedFrom]
+	if reloadSourceJSON == "" {
+		t.Error("reload source annotation not found in pod template")
+	}
+
+	// Verify it contains JSON with expected fields
+	if !strings.Contains(reloadSourceJSON, "\"kind\":\"ConfigMap\"") || !strings.Contains(reloadSourceJSON, "\"name\":\"app-config\"") {
+		t.Errorf("expected JSON metadata in annotation, got '%s'", reloadSourceJSON)
 	}
 
 	// Check that env var was NOT added (annotations strategy)
@@ -232,7 +243,7 @@ func TestTriggerReloadStatefulSet(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyEnvVars,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "redis-secret", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -303,7 +314,7 @@ func TestTriggerReloadDaemonSet(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyEnvVars,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "fluentd-config", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -465,7 +476,7 @@ func TestTriggerReloadRestartStrategy(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyRestart,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindSecret, "app-secret", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -552,7 +563,7 @@ func TestTriggerReloadRolloutStrategyAlias(t *testing.T) {
 		ReloadStrategy: util.ReloadStrategyRollout,
 	}
 
-	err := updater.TriggerReload(context.Background(), target, "test-hash")
+	err := updater.TriggerReload(context.Background(), target, util.KindConfigMap, "nginx-config", "default", "test-hash")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

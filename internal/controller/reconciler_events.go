@@ -96,7 +96,7 @@ func (r *ReloaderConfigReconciler) reconcileSecret(
 		"after", len(filteredTargets))
 
 	// Phase 3: Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, currentHash)
+	successCount := r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, secret.Namespace, currentHash)
 
 	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
 	if successCount > 0 {
@@ -159,7 +159,7 @@ func (r *ReloaderConfigReconciler) reconcileConfigMap(
 		"after", len(filteredTargets))
 
 	// Phase 3: Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, currentHash)
+	successCount := r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, configMap.Namespace, currentHash)
 
 	// Phase 4: Update ReloaderConfig statuses (only if at least one reload succeeded)
 	if successCount > 0 {
@@ -212,7 +212,7 @@ func (r *ReloaderConfigReconciler) reconcileSecretCreated(
 		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
 
 		// Execute reloads for filtered targets
-		successCount = r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, currentHash)
+		successCount = r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, secret.Namespace, currentHash)
 	}
 
 	// Persist hash in Secret annotation for future update events
@@ -298,7 +298,7 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
 
 		// Execute reloads for filtered targets
-		successCount = r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, currentHash)
+		successCount = r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, configMap.Namespace, currentHash)
 	}
 
 	// Persist hash in ConfigMap annotation for future update events
