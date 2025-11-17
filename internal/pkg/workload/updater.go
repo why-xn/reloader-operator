@@ -403,12 +403,6 @@ func applyEnvVarsStrategy(template *corev1.PodTemplateSpec, timestamp, reloadSou
 		})
 	}
 
-	// Add last-reloaded-from annotation with resource metadata (matches original Reloader)
-	if template.Annotations == nil {
-		template.Annotations = make(map[string]string)
-	}
-	template.Annotations[util.AnnotationLastReloadedFrom] = reloadSourceJSON
-
 	return nil
 }
 

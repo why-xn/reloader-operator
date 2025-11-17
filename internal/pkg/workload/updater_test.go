@@ -102,19 +102,11 @@ func TestTriggerReloadEnvVarsStrategy(t *testing.T) {
 		t.Error("RELOADER_TRIGGERED_AT env var not found in deployment")
 	}
 
-	// Check that reload source annotation was added with JSON format
-	if updatedDeployment.Spec.Template.Annotations == nil {
-		t.Fatal("pod template annotations should not be nil")
-	}
-
-	reloadSourceJSON := updatedDeployment.Spec.Template.Annotations[util.AnnotationLastReloadedFrom]
-	if reloadSourceJSON == "" {
-		t.Error("reload source annotation not found in pod template")
-	}
-
-	// Verify it contains JSON with expected fields
-	if !strings.Contains(reloadSourceJSON, "\"kind\":\"Secret\"") || !strings.Contains(reloadSourceJSON, "\"name\":\"db-secret\"") {
-		t.Errorf("expected JSON metadata in annotation, got '%s'", reloadSourceJSON)
+	// Check that NO annotations were added (env-vars strategy should only update env var)
+	if updatedDeployment.Spec.Template.Annotations != nil {
+		if _, exists := updatedDeployment.Spec.Template.Annotations[util.AnnotationLastReloadedFrom]; exists {
+			t.Error("env-vars strategy should not add annotations")
+		}
 	}
 }
 
