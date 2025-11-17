@@ -729,15 +729,17 @@ func (r *ReloaderConfigReconciler) reconcileSecretCreated(
 		"totalTargets", len(allTargets),
 		"fromCRD", len(reloaderConfigs))
 
-	// Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
+	// Always update ReloaderConfig statuses to track the new resource
+	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
 
-	// Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, currentHash)
+	// Only trigger workload reloads if ReloadOnCreate flag is enabled
+	successCount := 0
+	if r.ReloadOnCreate {
+		// Filter targets based on targeted reload settings
+		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindSecret, secret.Name, secret.Namespace)
 
-	// Update ReloaderConfig statuses (only if at least one reload succeeded)
-	if successCount > 0 {
-		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, secret.Namespace, util.KindSecret, secret.Name, currentHash)
+		// Execute reloads for filtered targets
+		successCount = r.executeReloads(ctx, filteredTargets, util.KindSecret, secret.Name, currentHash)
 	}
 
 	// Persist hash in Secret annotation for future update events
@@ -745,7 +747,7 @@ func (r *ReloaderConfigReconciler) reconcileSecretCreated(
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("Secret create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount)
+	logger.Info("Secret create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount, "reloadOnCreate", r.ReloadOnCreate)
 	return ctrl.Result{}, nil
 }
 
@@ -790,7 +792,7 @@ func (r *ReloaderConfigReconciler) reconcileSecretDeleted(
 	return ctrl.Result{}, nil
 }
 
-// reconcileConfigMapCreated handles ConfigMap CREATE events when --reload-on-create is enabled
+// reconcileConfigMapCreated handles ConfigMap CREATE events
 func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 	ctx context.Context,
 	configMap *corev1.ConfigMap,
@@ -813,15 +815,17 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 		"totalTargets", len(allTargets),
 		"fromCRD", len(reloaderConfigs))
 
-	// Filter targets based on targeted reload settings
-	filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
+	// Always update ReloaderConfig statuses to track the new resource
+	r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
 
-	// Execute reloads for filtered targets
-	successCount := r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, currentHash)
+	// Only trigger workload reloads if ReloadOnCreate flag is enabled
+	successCount := 0
+	if r.ReloadOnCreate {
+		// Filter targets based on targeted reload settings
+		filteredTargets := r.filterTargetsForTargetedReload(ctx, allTargets, util.KindConfigMap, configMap.Name, configMap.Namespace)
 
-	// Update ReloaderConfig statuses (only if at least one reload succeeded)
-	if successCount > 0 {
-		r.updateReloaderConfigStatuses(ctx, reloaderConfigs, configMap.Namespace, util.KindConfigMap, configMap.Name, currentHash)
+		// Execute reloads for filtered targets
+		successCount = r.executeReloads(ctx, filteredTargets, util.KindConfigMap, configMap.Name, currentHash)
 	}
 
 	// Persist hash in ConfigMap annotation for future update events
@@ -829,7 +833,7 @@ func (r *ReloaderConfigReconciler) reconcileConfigMapCreated(
 		return ctrl.Result{}, err
 	}
 
-	logger.Info("ConfigMap create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount)
+	logger.Info("ConfigMap create reconciliation complete", "hash", currentHash, "reloadedTargets", successCount, "reloadOnCreate", r.ReloadOnCreate)
 	return ctrl.Result{}, nil
 }
 
@@ -1685,8 +1689,9 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
-					// Only process creates if flag is enabled and controllers are initialized
-					return r.ReloadOnCreate && r.controllersInitialized.Load()
+					// Always process creates after controllers are initialized
+					// The ReloadOnCreate flag controls whether workloads are reloaded, not whether we track the resource
+					return r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
 					// Check namespace filtering first
@@ -1729,8 +1734,9 @@ func (r *ReloaderConfigReconciler) SetupWithManager(mgr ctrl.Manager) error {
 					if !r.ResourceLabelSelector.Matches(labels.Set(e.Object.GetLabels())) {
 						return false
 					}
-					// Only process creates if flag is enabled and controllers are initialized
-					return r.ReloadOnCreate && r.controllersInitialized.Load()
+					// Always process creates after controllers are initialized
+					// The ReloadOnCreate flag controls whether workloads are reloaded, not whether we track the resource
+					return r.controllersInitialized.Load()
 				},
 				UpdateFunc: func(e event.UpdateEvent) bool {
 					// Check namespace filtering first

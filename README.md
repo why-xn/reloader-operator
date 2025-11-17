@@ -113,6 +113,7 @@ spec:
 - **[docs/ANNOTATION_REFERENCE.md](docs/ANNOTATION_REFERENCE.md)** - Complete annotation reference guide
 - **[docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md)** - Current implementation status and feature comparison
 - **[docs/CRD_SCHEMA.md](docs/CRD_SCHEMA.md)** - ReloaderConfig CRD schema reference
+- **[docs/MANUAL_TESTING_GUIDE.md](docs/MANUAL_TESTING_GUIDE.md)** - Step-by-step manual testing guide for all features
 
 ### Common Annotations
 

@@ -29,6 +29,7 @@ import (
 )
 
 // GetPodUIDs returns UIDs of all pods matching a workload's selector
+// It retries to ensure all pods are Ready, not just Running, to avoid race conditions
 func GetPodUIDs(namespace, workloadType, workloadName string) ([]string, error) {
 	// Get label selector based on workload type
 	cmd := exec.Command("kubectl", "get", workloadType, workloadName,
@@ -52,22 +53,76 @@ func GetPodUIDs(namespace, workloadType, workloadName string) ([]string, error) 
 	}
 	labelSelector := strings.Join(selectors, ",")
 
-	// Get pod UIDs (only Running pods, which typically excludes terminating ones)
-	cmd = exec.Command("kubectl", "get", "pods",
+	// Get expected replica count
+	cmd = exec.Command("kubectl", "get", workloadType, workloadName,
 		"-n", namespace,
-		"-l", labelSelector,
-		"-o", "jsonpath={.items[?(@.status.phase=='Running')].metadata.uid}")
-	output, err = Run(cmd)
+		"-o", "jsonpath={.spec.replicas}")
+	replicaOutput, err := Run(cmd)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get pod UIDs: %w", err)
+		return nil, fmt.Errorf("failed to get replica count: %w", err)
+	}
+	expectedCount := 1 // Default to 1 if replicas is not set
+	if replicaOutput != "" && strings.TrimSpace(replicaOutput) != "" {
+		fmt.Sscanf(strings.TrimSpace(replicaOutput), "%d", &expectedCount)
 	}
 
-	output = strings.TrimSpace(output)
-	if output == "" {
-		return []string{}, nil
+	// Retry logic: wait for all pods to be Ready
+	// This handles the race condition where pods are Running but not yet Ready
+	maxRetries := 3
+	retryDelay := 3 * time.Second
+
+	var uids []string
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			time.Sleep(retryDelay)
+		}
+
+		// First, explicitly wait for pods to be ready using kubectl wait
+		// This ensures we don't get pods that are Running but not Ready
+		waitCmd := exec.Command("kubectl", "wait", "pods",
+			"-n", namespace,
+			"-l", labelSelector,
+			"--for=condition=Ready",
+			fmt.Sprintf("--timeout=%ds", int(retryDelay.Seconds())))
+		_, _ = Run(waitCmd) // Ignore errors, we'll check UIDs anyway
+
+		// Now get pod UIDs for Running pods
+		cmd = exec.Command("kubectl", "get", "pods",
+			"-n", namespace,
+			"-l", labelSelector,
+			"--field-selector=status.phase=Running",
+			"-o", "jsonpath={.items[*].metadata.uid}")
+		output, err = Run(cmd)
+		if err != nil {
+			if attempt == maxRetries-1 {
+				return nil, fmt.Errorf("failed to get pod UIDs: %w", err)
+			}
+			continue
+		}
+
+		output = strings.TrimSpace(output)
+		if output == "" {
+			if attempt == maxRetries-1 {
+				return []string{}, nil
+			}
+			continue
+		}
+
+		uids = strings.Fields(output)
+
+		// If we got the expected count, return immediately
+		if len(uids) == expectedCount {
+			return uids, nil
+		}
+
+		// If this is not the last attempt and we didn't get the expected count, retry
+		if attempt < maxRetries-1 {
+			continue
+		}
 	}
 
-	uids := strings.Fields(output)
+	// Return what we have, even if it's not the expected count
+	// The test will fail if the counts don't match
 	return uids, nil
 }
 
