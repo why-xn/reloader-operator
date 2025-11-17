@@ -25,8 +25,6 @@ The `spec` section defines the desired behavior of the reloader configuration.
 | `targets` | [][TargetWorkload](#targetworkload) | No | - | Workloads to reload when watched resources change |
 | `reloadStrategy` | string | No | `env-vars` | How to trigger rolling updates (`env-vars` or `annotations`) |
 | `autoReloadAll` | boolean | No | `false` | Automatically reload on any referenced resource change |
-| `reloadOnCreate` | boolean | No | `false` | Trigger reload when watched resources are created |
-| `reloadOnDelete` | boolean | No | `false` | Trigger reload when watched resources are deleted |
 | `ignoreResources` | [][ResourceReference](#resourcereference) | No | - | Resources to ignore even if they match watch criteria |
 | `alerts` | [AlertConfiguration](#alertconfiguration) | No | - | Alert settings for reload notifications |
 | `matchLabels` | map[string]string | No | - | Label-based matching for resources |
