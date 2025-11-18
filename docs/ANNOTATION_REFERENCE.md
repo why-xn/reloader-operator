@@ -709,8 +709,6 @@ data:
 
 | Annotation | Status | Notes |
 |------------|--------|-------|
-| `configmaps.exclude.reloader.stakater.com/reload` | ❌ Not implemented | Use CRD `ignoreResources` instead |
-| `secrets.exclude.reloader.stakater.com/reload` | ❌ Not implemented | Use CRD `ignoreResources` instead |
 | Regex/wildcard patterns in reload annotations | ❌ Not implemented | Only exact string matching |
 
 ---
@@ -728,7 +726,6 @@ All annotations from original Reloader work exactly the same way, with these exc
 | Feature | Original Reloader | Reloader Operator | Migration |
 |---------|------------------|-------------------|-----------|
 | Regex patterns in reload lists | ✅ Supported | ❌ Not supported | Use exact names or switch to CRD |
-| Exclusion annotations | ✅ Supported | ❌ Not supported | Use `reloader.stakater.com/ignore` or CRD `ignoreResources` |
 | CronJob/Rollout/DeploymentConfig | ✅ Supported | ❌ Not supported | Not yet implemented |
 
 **Migration Steps:**
