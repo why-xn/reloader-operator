@@ -27,8 +27,9 @@ The `spec` section defines the desired behavior of the reloader configuration.
 | `reloadStrategy` | string | No | `env-vars` | How to modify template when rollout (`env-vars` or `annotations`) |
 | `autoReloadAll` | boolean | No | `false` | Automatically reload on any referenced resource change |
 | `ignoreResources` | [][ResourceReference](#resourcereference) | No | - | Resources to ignore even if they match watch criteria |
-| `alerts` | [AlertConfiguration](#alertconfiguration) | No | - | Alert settings for reload notifications |
 | `matchLabels` | map[string]string | No | - | Label-based matching for resources |
+
+**Note:** Alert configuration is done at the operator level using command-line flags (`--alert-on-reload`, `--alert-sink`, `--alert-webhook-url`), not in the CRD spec.
 
 ### WatchedResources
 
@@ -38,6 +39,7 @@ Defines which ConfigMaps and Secrets to monitor for changes.
 |-------|------|-------------|
 | `secrets` | []string | List of Secret names to watch |
 | `configMaps` | []string | List of ConfigMap names to watch |
+| `enableTargetedReload` | boolean | Enable targeted reload mode (only reload targets with `requireReference=true` that actually reference the changed resource) |
 | `namespaceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#labelselector-v1-meta) | Watch resources across namespaces matching labels |
 | `resourceSelector` | [LabelSelector](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.28/#labelselector-v1-meta) | Filter resources by labels |
 
@@ -47,13 +49,13 @@ Defines a workload that should be reloaded.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `kind` | string | Yes | Workload type: `Deployment`, `StatefulSet`, `DaemonSet`, `DeploymentConfig`, `Rollout`, `CronJob` |
+| `kind` | string | Yes | Workload type: `Deployment`, `StatefulSet`, `DaemonSet` <br/>**Note:** `CronJob`, `Rollout` (Argo), and `DeploymentConfig` (OpenShift) are defined in the CRD but not yet implemented in the reload logic |
 | `name` | string | Yes | Name of the workload |
 | `namespace` | string | No | Namespace (defaults to ReloaderConfig's namespace) |
 | `rolloutStrategy` | string | No | Override global rollout strategy for this workload (`rollout` or `restart`) |
 | `reloadStrategy` | string | No | Override global reload strategy for this workload (`env-vars` or `annotations`) |
 | `pausePeriod` | string | No | Duration to prevent multiple reloads (e.g., `5m`, `1h`) |
-| `requireReference` | boolean | No | Only reload if workload references the changed resource (for targeted reload) |
+| `requireReference` | boolean | No | Only reload if workload references the changed resource (works with `enableTargetedReload` in watchedResources) |
 
 ### ResourceReference
 
@@ -65,35 +67,39 @@ Identifies a specific Kubernetes resource.
 | `name` | string | Yes | Resource name |
 | `namespace` | string | No | Resource namespace |
 
-### AlertConfiguration
+## Alert Configuration
 
-Configures alerting when reloads occur.
+**Important:** Alerts are configured at the **operator level** using command-line flags, not in the ReloaderConfig CRD.
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `slack` | [WebhookConfig](#webhookconfig) | Slack webhook configuration |
-| `teams` | [WebhookConfig](#webhookconfig) | Microsoft Teams webhook |
-| `googleChat` | [WebhookConfig](#webhookconfig) | Google Chat webhook |
-| `customWebhook` | [WebhookConfig](#webhookconfig) | Custom webhook endpoint |
+### Operator Alert Flags
 
-### WebhookConfig
+| Flag | Description | Example |
+|------|-------------|---------|
+| `--alert-on-reload` | Enable alerts when reloads occur | `--alert-on-reload=true` |
+| `--alert-sink` | Alert destination type | `--alert-sink=slack` (options: slack, teams, gchat, webhook) |
+| `--alert-webhook-url` | Webhook URL for alerts | `--alert-webhook-url=https://hooks.slack.com/...` |
+| `--alert-additional-info` | Additional context in alerts | `--alert-additional-info="Cluster: production"` |
 
-Webhook endpoint configuration.
+### Example Alert Configuration
 
-| Field | Type | Required | Description |
-|-------|------|----------|-------------|
-| `url` | string | Yes* | Webhook URL (*unless `secretRef` is used) |
-| `secretRef` | [SecretReference](#secretreference) | No | Reference to Secret containing URL |
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: reloader-operator
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+        - --alert-on-reload=true
+        - --alert-sink=slack
+        - --alert-webhook-url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+        - --alert-additional-info=Environment: Production
+```
 
-### SecretReference
-
-Reference to a Secret containing sensitive data.
-
-| Field | Type | Required | Default | Description |
-|-------|------|----------|---------|-------------|
-| `name` | string | Yes | - | Secret name |
-| `key` | string | No | `url` | Key in the Secret |
-| `namespace` | string | No | - | Secret namespace (defaults to ReloaderConfig's namespace) |
+See the [Helm chart values](../charts/reloader-operator/values.yaml) for more alert configuration options.
 
 ## ReloaderConfigStatus
 

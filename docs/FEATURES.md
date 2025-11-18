@@ -1,8 +1,11 @@
 # Reloader Operator - Feature Documentation
 
-**Last Updated**: 2025-11-16
+**Last Updated**: 2025-11-17
 
 This document provides detailed documentation for all features implemented in the Reloader Operator.
+
+**Supported Workload Types**: Deployment, StatefulSet, DaemonSet
+**Note**: CronJob, Argo Rollout, and OpenShift DeploymentConfig are defined in the CRD but not yet implemented.
 
 ## Table of Contents
 
@@ -11,7 +14,10 @@ This document provides detailed documentation for all features implemented in th
 3. [Reload Strategies](#reload-strategies)
 4. [Filtering Features](#filtering-features)
 5. [Reload Triggers](#reload-triggers)
-6. [Usage Examples](#usage-examples)
+6. [Ignore/Exclude Features](#ignoreexclude-features)
+7. [Alert Integration](#alert-integration)
+8. [Deployment Options](#deployment-options)
+9. [Usage Examples](#usage-examples)
 
 ---
 
@@ -693,15 +699,305 @@ reloader.stakater.com/rollout-strategy: "annotations"
 
 ---
 
+## Ignore/Exclude Features
+
+The operator supports ignoring specific resources even if they match watch criteria.
+
+### Annotation-Based Ignore
+
+Add the `reloader.stakater.com/ignore: "true"` annotation to a Secret or ConfigMap to exclude it from triggering reloads:
+
+```yaml
+apiVersion: v1
+kind: Secret
+metadata:
+  name: internal-secret
+  annotations:
+    reloader.stakater.com/ignore: "true"  # This Secret won't trigger reloads
+data:
+  key: value
+```
+
+**Use Cases:**
+- Exclude service account tokens
+- Exclude CA certificates
+- Exclude operator-managed resources
+- Exclude temporary/system resources
+
+### CRD-Based Ignore
+
+Use `spec.ignoreResources` in ReloaderConfig for more complex ignore rules:
+
+```yaml
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+metadata:
+  name: my-app-reloader
+spec:
+  watchedResources:
+    secrets:
+      - app-secret
+      - db-secret
+      - internal-secret  # Listed in watchedResources...
+
+  ignoreResources:  # ...but explicitly ignored
+    - kind: Secret
+      name: internal-secret
+      namespace: default
+    - kind: ConfigMap
+      name: kube-root-ca.crt
+```
+
+**Features:**
+- Namespace-specific ignore rules
+- Works with both `watchedResources` and `autoReloadAll` modes
+- Can ignore resources even if they're explicitly watched
+
+---
+
+## Alert Integration
+
+The operator can send alerts when workloads are reloaded. Alerts are configured at the **operator level** using command-line flags.
+
+### Alert Configuration
+
+| Flag | Description | Options |
+|------|-------------|---------|
+| `--alert-on-reload` | Enable alerts | `true` or `false` (default: `false`) |
+| `--alert-sink` | Alert destination type | `slack`, `teams`, `gchat`, `webhook` (default: `webhook`) |
+| `--alert-webhook-url` | Webhook URL | URL string |
+| `--alert-additional-info` | Extra context in alerts | Any string |
+
+### Supported Alert Sinks
+
+#### 1. Slack
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+spec:
+  template:
+    spec:
+      containers:
+      - name: manager
+        args:
+        - --alert-on-reload=true
+        - --alert-sink=slack
+        - --alert-webhook-url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+        - --alert-additional-info=Cluster: production
+```
+
+**Setup:**
+1. Create an Incoming Webhook in Slack: https://api.slack.com/messaging/webhooks
+2. Copy the webhook URL
+3. Configure the operator with the URL
+
+#### 2. Microsoft Teams
+
+```yaml
+args:
+  - --alert-on-reload=true
+  - --alert-sink=teams
+  - --alert-webhook-url=https://outlook.office.com/webhook/...
+  - --alert-additional-info=Team: Platform
+```
+
+**Setup:**
+1. Go to your Teams channel
+2. Configure Connectors → Incoming Webhook
+3. Copy the webhook URL
+
+#### 3. Google Chat
+
+```yaml
+args:
+  - --alert-on-reload=true
+  - --alert-sink=gchat
+  - --alert-webhook-url=https://chat.googleapis.com/v1/spaces/.../messages?key=...
+  - --alert-additional-info=Environment: Staging
+```
+
+**Setup:**
+1. Open Google Chat space
+2. Manage webhooks → Create webhook
+3. Copy the webhook URL
+
+#### 4. Custom Webhook
+
+```yaml
+args:
+  - --alert-on-reload=true
+  - --alert-sink=webhook
+  - --alert-webhook-url=https://your-custom-endpoint.com/webhook
+  - --alert-additional-info=Custom info
+```
+
+Send alerts to any HTTP endpoint that accepts POST requests.
+
+### Alert Message Format
+
+Alerts include:
+- Workload kind, name, and namespace
+- Resource kind and name that triggered the reload
+- Timestamp of the reload
+- Additional info (if configured)
+- ReloaderConfig name (if applicable)
+
+### Helm Chart Alert Configuration
+
+```yaml
+# values.yaml
+controllerManager:
+  manager:
+    args:
+      - --alert-on-reload=true
+      - --alert-sink=slack
+      - --alert-webhook-url=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+      - --alert-additional-info=Cluster: production | Team: Platform
+```
+
+---
+
+## Deployment Options
+
+The operator can be deployed using multiple methods.
+
+### 1. Kubectl + Kustomize (Default)
+
+```bash
+# Install CRDs
+make install
+
+# Deploy operator
+make deploy IMG=stakater/reloader-operator:v2.0.0
+
+# Undeploy
+make undeploy
+```
+
+### 2. Helm Chart (Recommended)
+
+The operator includes a comprehensive Helm chart with production-ready defaults.
+
+#### Install
+
+```bash
+helm install reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --create-namespace
+```
+
+#### Install with Custom Values
+
+```bash
+helm install reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --create-namespace \
+  --values custom-values.yaml
+```
+
+#### Example Custom Values
+
+```yaml
+# custom-values.yaml
+controllerManager:
+  replicas: 3  # High availability
+
+  manager:
+    image:
+      repository: stakater/reloader-operator
+      tag: v2.0.0
+
+    args:
+      # Enable alerts
+      - --alert-on-reload=true
+      - --alert-sink=slack
+      - --alert-webhook-url=https://hooks.slack.com/...
+
+      # Filter namespaces
+      - --namespace-selector=environment=production
+      - --namespaces-to-ignore=kube-system,kube-public
+
+      # Reload behavior
+      - --reload-on-create=true
+      - --reload-on-delete=false
+      - --rollout-strategy=restart  # GitOps-friendly
+
+      # Enable metrics
+      - --metrics-bind-address=:8443
+      - --leader-elect=true
+
+    resources:
+      limits:
+        cpu: 1000m
+        memory: 256Mi
+      requests:
+        cpu: 100m
+        memory: 128Mi
+
+  # Node scheduling
+  nodeSelector:
+    node-role.kubernetes.io/control-plane: ""
+
+  tolerations:
+    - key: node-role.kubernetes.io/control-plane
+      operator: Exists
+      effect: NoSchedule
+
+# Metrics configuration
+metricsService:
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8443"
+    prometheus.io/scheme: "https"
+```
+
+#### Upgrade
+
+```bash
+helm upgrade reloader-operator ./charts/reloader-operator \
+  --namespace reloader-operator-system \
+  --values custom-values.yaml
+```
+
+#### Uninstall
+
+```bash
+helm uninstall reloader-operator --namespace reloader-operator-system
+
+# Remove CRDs (optional)
+kubectl delete crd reloaderconfigs.reloader.stakater.com
+```
+
+### 3. Direct Manifest Application
+
+```bash
+# Apply all manifests
+kubectl apply -f config/crd/bases/reloader.stakater.com_reloaderconfigs.yaml
+kubectl apply -f config/rbac/
+kubectl apply -f config/manager/
+```
+
+### Deployment Comparison
+
+| Method | Pros | Cons | Best For |
+|--------|------|------|----------|
+| **Helm** | Easy configuration, production-ready, version management | Requires Helm | Production deployments |
+| **Kustomize** | Native to Kubebuilder, customizable overlays | Manual configuration | Development, CI/CD |
+| **Direct** | Simple, no tools needed | Hard to manage, no templating | Testing, quick trials |
+
+---
+
 ## Related Documentation
 
 - [README.md](../README.md) - Getting started guide
 - [ANNOTATION_REFERENCE.md](ANNOTATION_REFERENCE.md) - Complete annotation documentation
 - [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation status
 - [CRD_SCHEMA.md](CRD_SCHEMA.md) - ReloaderConfig CRD reference
+- [Helm Chart README](../charts/reloader-operator/README.md) - Helm chart documentation
 
 ---
 
-**Version**: 1.0
+**Version**: 2.0
 **Maintained by**: Reloader Operator Team
-**Last Updated**: 2025-11-16
+**Last Updated**: 2025-11-17
