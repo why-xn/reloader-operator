@@ -32,21 +32,56 @@ When multiple annotations are present, they are evaluated in this order:
 
 ## Table of Contents
 
-1. [Auto-Reload Annotations](#1-auto-reload-annotations)
-2. [Named Resource Reload Annotations](#2-named-resource-reload-annotations)
-3. [Search and Match Annotations](#3-search-and-match-annotations)
-4. [Ignore Annotations](#4-ignore-annotations)
-5. [Strategy Annotations](#5-strategy-annotations)
-6. [Pause Period Annotations](#6-pause-period-annotations)
-7. [Tracking Annotations (Auto-Set)](#7-tracking-annotations-auto-set)
-8. [Summary Table](#8-summary-table)
+1. [Summary Tables](#1-summary-tables)
+2. [Auto-Reload Annotations](#2-auto-reload-annotations)
+3. [Named Resource Reload Annotations](#3-named-resource-reload-annotations)
+4. [Search and Match Annotations](#4-search-and-match-annotations)
+5. [Ignore Annotations](#5-ignore-annotations)
+6. [Strategy Annotations](#6-strategy-annotations)
+7. [Pause Period Annotations](#7-pause-period-annotations)
+8. [Tracking Annotations (Auto-Set)](#8-tracking-annotations-auto-set)
 9. [Migration from Original Reloader](#9-migration-from-original-reloader)
 
 ---
 
-## 1. Auto-Reload Annotations
+## 1. Summary Tables
 
-### 1.1 `reloader.stakater.com/auto`
+### Workload Annotations
+
+| Annotation | Applied To | Values | Status | Priority |
+|------------|------------|--------|--------|----------|
+| `reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"`, `"false"` | ✅ Implemented | Highest |
+| `secret.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
+| `configmap.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
+| `secret.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
+| `configmap.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
+| `reloader.stakater.com/search` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | Low |
+| `reloader.stakater.com/rollout-strategy` | Deployment/StatefulSet/DaemonSet | `"rollout"`, `"restart"` | ✅ Implemented | - |
+| `deployment.reloader.stakater.com/pause-period` | Deployment | Duration (e.g., `"5m"`) | ✅ Implemented | - |
+| `statefulset.reloader.stakater.com/pause-period` | StatefulSet | Duration | ✅ Implemented | - |
+| `daemonset.reloader.stakater.com/pause-period` | DaemonSet | Duration | ✅ Implemented | - |
+| `reloader.stakater.com/last-reload` | Deployment/StatefulSet/DaemonSet | RFC3339 timestamp | 📝 Auto-set | - |
+| `reloader.stakater.com/last-reloaded-from` | Deployment/StatefulSet/DaemonSet | JSON string | 📝 Auto-set | - |
+
+### Resource Annotations
+
+| Annotation | Applied To | Values | Status | Notes |
+|------------|------------|--------|--------|-------|
+| `reloader.stakater.com/match` | ConfigMap/Secret | `"true"` | ✅ Implemented | Works with search mode |
+| `reloader.stakater.com/ignore` | ConfigMap/Secret | `"true"` | ✅ Implemented | Global ignore |
+| `reloader.stakater.com/last-hash` | ConfigMap/Secret | Hash string | 📝 Auto-set | Internal tracking |
+
+### Not Implemented
+
+| Annotation | Status | Notes |
+|------------|--------|-------|
+| Regex/wildcard patterns in reload annotations | ❌ Not implemented | Only exact string matching |
+
+---
+
+## 2. Auto-Reload Annotations
+
+### 2.1 `reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"` or `"false"`
@@ -98,7 +133,7 @@ spec:
 
 ---
 
-### 1.2 `secret.reloader.stakater.com/auto`
+### 2.2 `secret.reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"`
@@ -135,7 +170,7 @@ spec:
 
 ---
 
-### 1.3 `configmap.reloader.stakater.com/auto`
+### 2.3 `configmap.reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"`
@@ -172,9 +207,9 @@ spec:
 
 ---
 
-## 2. Named Resource Reload Annotations
+## 3. Named Resource Reload Annotations
 
-### 2.1 `secret.reloader.stakater.com/reload`
+### 3.1 `secret.reloader.stakater.com/reload`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** Comma-separated Secret names (e.g., `"secret1,secret2,secret3"`)
@@ -224,7 +259,7 @@ spec:
 
 ---
 
-### 2.2 `configmap.reloader.stakater.com/reload`
+### 3.2 `configmap.reloader.stakater.com/reload`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** Comma-separated ConfigMap names
@@ -258,9 +293,9 @@ spec:
 
 ---
 
-## 3. Search and Match Annotations
+## 4. Search and Match Annotations
 
-### 3.1 `reloader.stakater.com/search` (on Workload)
+### 4.1 `reloader.stakater.com/search` (on Workload)
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"`
@@ -303,7 +338,7 @@ spec:
 
 ---
 
-### 3.2 `reloader.stakater.com/match` (on ConfigMap/Secret)
+### 4.2 `reloader.stakater.com/match` (on ConfigMap/Secret)
 
 **Applied to:** ConfigMap, Secret
 **Value:** `"true"`
@@ -345,9 +380,9 @@ data:
 
 ---
 
-## 4. Ignore Annotations
+## 5. Ignore Annotations
 
-### 4.1 `reloader.stakater.com/ignore` (on ConfigMap/Secret)
+### 5.1 `reloader.stakater.com/ignore` (on ConfigMap/Secret)
 
 **Applied to:** ConfigMap, Secret
 **Value:** `"true"`
@@ -394,7 +429,7 @@ spec:
 
 ---
 
-### 4.2 `reloader.stakater.com/ignore` (on Workload)
+### 5.2 `reloader.stakater.com/ignore` (on Workload)
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"`
@@ -404,9 +439,9 @@ spec:
 
 ---
 
-## 5. Strategy Annotations
+## 6. Strategy Annotations
 
-### 5.1 `reloader.stakater.com/rollout-strategy`
+### 6.1 `reloader.stakater.com/rollout-strategy`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"rollout"` or `"restart"`
@@ -463,7 +498,7 @@ spec:
 
 ---
 
-### 5.2 Reload Strategy (env-vars vs annotations)
+### 6.2 Reload Strategy (env-vars vs annotations)
 
 **Note:** Reload strategy is NOT configured via annotations in annotation-based mode.
 It's only available in CRD-based configuration (`spec.reloadStrategy`).
@@ -484,9 +519,9 @@ spec:
 
 ---
 
-## 6. Pause Period Annotations
+## 7. Pause Period Annotations
 
-### 6.1 `deployment.reloader.stakater.com/pause-period`
+### 7.1 `deployment.reloader.stakater.com/pause-period`
 
 **Applied to:** Deployment
 **Value:** Duration string (e.g., `"5m"`, `"1h"`, `"30s"`)
@@ -535,7 +570,7 @@ spec:
 
 ---
 
-### 6.2 `statefulset.reloader.stakater.com/pause-period`
+### 7.2 `statefulset.reloader.stakater.com/pause-period`
 
 **Applied to:** StatefulSet
 **Value:** Duration string
@@ -563,7 +598,7 @@ spec:
 
 ---
 
-### 6.3 `daemonset.reloader.stakater.com/pause-period`
+### 7.3 `daemonset.reloader.stakater.com/pause-period`
 
 **Applied to:** DaemonSet
 **Value:** Duration string
@@ -591,11 +626,11 @@ spec:
 
 ---
 
-## 7. Tracking Annotations (Auto-Set)
+## 8. Tracking Annotations (Auto-Set)
 
 These annotations are set automatically by the operator. Do NOT set them manually.
 
-### 7.1 `reloader.stakater.com/last-reload`
+### 8.1 `reloader.stakater.com/last-reload`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet (auto-set)
 **Value:** RFC3339 timestamp
@@ -625,7 +660,7 @@ spec:
 
 ---
 
-### 7.2 `reloader.stakater.com/last-reloaded-from`
+### 8.2 `reloader.stakater.com/last-reloaded-from`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet (auto-set)
 **Value:** JSON string with reload source
@@ -650,7 +685,7 @@ metadata:
 
 ---
 
-### 7.3 `reloader.stakater.com/last-hash` (on ConfigMap/Secret)
+### 8.3 `reloader.stakater.com/last-hash` (on ConfigMap/Secret)
 
 **Applied to:** ConfigMap, Secret (auto-set)
 **Value:** Hash of resource data
@@ -675,41 +710,6 @@ data:
 
 **Implementation:**
 - Constant: `internal/pkg/util/helpers.go:28`
-
----
-
-## 8. Summary Table
-
-### Workload Annotations
-
-| Annotation | Applied To | Values | Status | Priority |
-|------------|------------|--------|--------|----------|
-| `reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"`, `"false"` | ✅ Implemented | Highest |
-| `secret.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
-| `configmap.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
-| `secret.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
-| `configmap.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
-| `reloader.stakater.com/search` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | Low |
-| `reloader.stakater.com/rollout-strategy` | Deployment/StatefulSet/DaemonSet | `"rollout"`, `"restart"` | ✅ Implemented | - |
-| `deployment.reloader.stakater.com/pause-period` | Deployment | Duration (e.g., `"5m"`) | ✅ Implemented | - |
-| `statefulset.reloader.stakater.com/pause-period` | StatefulSet | Duration | ✅ Implemented | - |
-| `daemonset.reloader.stakater.com/pause-period` | DaemonSet | Duration | ✅ Implemented | - |
-| `reloader.stakater.com/last-reload` | Deployment/StatefulSet/DaemonSet | RFC3339 timestamp | 📝 Auto-set | - |
-| `reloader.stakater.com/last-reloaded-from` | Deployment/StatefulSet/DaemonSet | JSON string | 📝 Auto-set | - |
-
-### Resource Annotations
-
-| Annotation | Applied To | Values | Status | Notes |
-|------------|------------|--------|--------|-------|
-| `reloader.stakater.com/match` | ConfigMap/Secret | `"true"` | ✅ Implemented | Works with search mode |
-| `reloader.stakater.com/ignore` | ConfigMap/Secret | `"true"` | ✅ Implemented | Global ignore |
-| `reloader.stakater.com/last-hash` | ConfigMap/Secret | Hash string | 📝 Auto-set | Internal tracking |
-
-### Not Implemented
-
-| Annotation | Status | Notes |
-|------------|--------|-------|
-| Regex/wildcard patterns in reload annotations | ❌ Not implemented | Only exact string matching |
 
 ---
 
