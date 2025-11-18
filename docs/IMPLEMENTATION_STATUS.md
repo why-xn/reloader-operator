@@ -434,28 +434,29 @@ Use only CRDs for new deployments, centralized config management.
 
 ## Feature Comparison with Original Reloader
 
-| Feature                            | Original Reloader | Reloader Operator | Status |
-|------------------------------------|------------------|-------------------|--------|
-| Annotation-based reload            | ✅ | ✅ | Full compatibility |
-| Auto-reload mode                   | ✅ | ✅ | Works |
-| Named resource reload              | ✅ | ✅ | Works (no regex yet) |
-| Search & match mode                | ✅ | ✅ | Works |
-| Reload strategies                  | ✅ | ✅ | Enhanced with `annotations` strategy |
-| Resource label selector            | ✅ | ✅ | Fully implemented |
-| Namespace selector                 | ✅ | ✅ | Fully implemented |
-| Namespace ignore list              | ✅ | ✅ | Fully implemented |
-| Reload on create                   | ✅ | ✅ | Fully implemented |
-| Reload on delete                   | ✅ | ✅ | Fully implemented |
-| Pause period                       | ✅ | ✅ | Fully implemented (CRD + annotation) |
-| CRD-based config                   | ❌ | ✅ | New feature |
-| Ignore/exclude resources           | ✅ | ✅ | Fully implemented (CRD + annotation) |
-| Regex patterns                     | ✅ | ❌ | Not implemented (exact match only) |
-| Workload types                     | ✅ (6 types) | ⚠️ (3 types) | Only Deployment, StatefulSet, DaemonSet |
-| CronJob support                    | ✅ | ❌ | Not implemented |
-| Argo Rollout support               | ✅ | ❌ | Not implemented |
-| Openshift DeploymentConfig support | ✅ | ❌ | Not implemented |
-| Alerting                           | ✅ | ✅ | Fully implemented (4 sinks) |
-| Helm chart                         | ✅ | ✅ | Both have Helm charts |
+| Feature                            | Original Reloader | Reloader Operator | Status                                          |
+|------------------------------------|------------------|-------------------|-------------------------------------------------|
+| Annotation-based reload            | ✅ | ✅ | Full compatibility                              |
+| Auto-reload mode                   | ✅ | ✅ | Works                                           |
+| Named resource reload              | ✅ | ✅ | Works (no regex yet)                            |
+| Search & match mode                | ✅ | ✅ | Works                                           |
+| Rollout strategies                 | ✅ | ✅ | Fully implemented (`rollout` or `restart`)      |
+| Reload strategies                  | ✅ | ✅ | Fully implemented (`env-vars` or `annotations`) |
+| Resource label selector            | ✅ | ✅ | Fully implemented                               |
+| Namespace selector                 | ✅ | ✅ | Fully implemented                               |
+| Namespace ignore list              | ✅ | ✅ | Fully implemented                               |
+| Reload on create                   | ✅ | ✅ | Fully implemented                               |
+| Reload on delete                   | ✅ | ✅ | Fully implemented                               |
+| Pause period                       | ✅ | ✅ | Fully implemented (CRD + annotation)            |
+| CRD-based config                   | ❌ | ✅ | New feature                                     |
+| Ignore/exclude resources           | ✅ | ✅ | Fully implemented (CRD + annotation)            |
+| Regex patterns                     | ✅ | ❌ | Not implemented (exact match only)              |
+| Workload types                     | ✅ (6 types) | ⚠️ (3 types) | Only Deployment, StatefulSet, DaemonSet         |
+| CronJob support                    | ✅ | ❌ | Not implemented                                 |
+| Argo Rollout support               | ✅ | ❌ | Not implemented                                 |
+| Openshift DeploymentConfig support | ✅ | ❌ | Not implemented                                 |
+| Alerting                           | ✅ | ✅ | Fully implemented (4 sinks)                     |
+| Helm chart                         | ✅ | ✅ | Both have Helm charts                           |
 
 ---
 
