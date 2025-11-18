@@ -1,16 +1,32 @@
 # Reloader Annotation Reference Guide
 
-**Last Updated:** 2025-11-05
-**Purpose:** Complete reference of all Reloader annotations with implementation status in Reloader-Operator
+**Last Updated:** 2025-11-17
+**Version:** 2.0
+**Purpose:** Complete reference of all Reloader annotations with current implementation status
+
+**Supported Workload Types:** Deployment, StatefulSet, DaemonSet
+**Note:** CronJob, Argo Rollout, and OpenShift DeploymentConfig are defined but not yet implemented
 
 ---
 
-## Quick Status Legend
+## Quick Reference
 
-- ✅ **Implemented** - Fully working in Reloader-Operator
-- ⚠️ **Partial** - Implemented with limitations or differences
-- ❌ **Missing** - Not yet implemented
-- 🐛 **Broken** - Implemented but has bugs
+### Status Legend
+
+- ✅ **Implemented** - Fully working and tested
+- ⚠️ **Partial** - Works with limitations
+- ❌ **Not Implemented** - Defined but not functional
+- 📝 **Auto-Set** - Set automatically by operator (read-only)
+
+### Annotation Priority (Reload Logic)
+
+When multiple annotations are present, they are evaluated in this order:
+
+1. **`reloader.stakater.com/auto: "false"`** → Explicitly disabled, skip all other checks
+2. **`reloader.stakater.com/auto: "true"`** → Auto-reload all referenced resources
+3. **Type-specific auto** (`secret.reloader.stakater.com/auto`, `configmap.reloader.stakater.com/auto`)
+4. **Named reload** (`secret.reloader.stakater.com/reload`, `configmap.reloader.stakater.com/reload`)
+5. **Search & Match** (`reloader.stakater.com/search` + `reloader.stakater.com/match`)
 
 ---
 
@@ -19,99 +35,80 @@
 1. [Auto-Reload Annotations](#1-auto-reload-annotations)
 2. [Named Resource Reload Annotations](#2-named-resource-reload-annotations)
 3. [Search and Match Annotations](#3-search-and-match-annotations)
-4. [Ignore and Exclusion Annotations](#4-ignore-and-exclusion-annotations)
-5. [Reload Strategy Annotations](#5-reload-strategy-annotations)
+4. [Ignore Annotations](#4-ignore-annotations)
+5. [Strategy Annotations](#5-strategy-annotations)
 6. [Pause Period Annotations](#6-pause-period-annotations)
-7. [Internal/Tracking Annotations](#7-internaltracking-annotations)
+7. [Tracking Annotations (Auto-Set)](#7-tracking-annotations-auto-set)
 8. [Summary Table](#8-summary-table)
+9. [Migration from Original Reloader](#9-migration-from-original-reloader)
 
 ---
 
 ## 1. Auto-Reload Annotations
 
-These annotations enable automatic reload when ANY referenced ConfigMap or Secret changes.
-
 ### 1.1 `reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"true"` or `"false"`
-**Status:** ⚠️ **Partial** - Requires ReloaderConfig to exist
+**Status:** ✅ **Implemented**
+**Priority:** Highest (checked first)
 
 **What it does:**
-- Automatically detects ALL ConfigMaps and Secrets referenced in the workload
+- Automatically watches ALL ConfigMaps and Secrets referenced in the workload's pod spec
 - Triggers reload when ANY of them change
-- Searches in: volumes, envFrom, env (valueFrom)
+- Searches in: volumes, volumeMounts, env, envFrom
+- Can be explicitly disabled with `"false"`
 
-**Original Reloader Behavior:**
+**Example:**
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    reloader.stakater.com/auto: "true"  # That's it! No other config needed
-spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - configMapRef:
-            name: app-config        # ← Will trigger reload
-        - secretRef:
-            name: db-credentials    # ← Will trigger reload
-        volumeMounts:
-        - name: tls
-          mountPath: /etc/tls
-      volumes:
-      - name: tls
-        secret:
-          secretName: tls-cert      # ← Will trigger reload
-```
-
-**Reloader-Operator Behavior:**
-```yaml
-# REQUIRES a ReloaderConfig in the same namespace:
-apiVersion: reloader.stakater.com/v1alpha1
-kind: ReloaderConfig
-metadata:
-  name: my-app-config
-spec:
-  autoReloadAll: true
-  targets:
-    - kind: Deployment
-      name: my-app
-
----
-# Then the annotation works:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
   annotations:
     reloader.stakater.com/auto: "true"
+spec:
+  template:
+    spec:
+      containers:
+      - name: app
+        image: myapp:latest
+        envFrom:
+        - configMapRef:
+            name: app-config  # Watched automatically
+        - secretRef:
+            name: db-creds    # Watched automatically
+        volumeMounts:
+        - name: tls
+          mountPath: /etc/tls
+      volumes:
+      - name: tls
+        secret:
+          secretName: tls-cert  # Watched automatically
 ```
 
-**Key Difference:**
-- Original: Just annotation is enough
-- Operator: Requires ReloaderConfig CRD
+**When to use:**
+- ✅ Simple deployments with few ConfigMaps/Secrets
+- ✅ When you want all referenced resources to trigger reloads
+- ❌ When you only want specific resources to trigger reloads (use named reload instead)
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:28` - `AnnotationAuto`
-- Check logic: `internal/pkg/workload/finder.go:343`
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:318-326`
+- Test: `internal/pkg/workload/finder_test.go`
 
 ---
 
 ### 1.2 `secret.reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** `"true"` or `"false"`
-**Status:** ⚠️ **Partial** - Requires ReloaderConfig to exist
+**Value:** `"true"`
+**Status:** ✅ **Implemented**
+**Priority:** Second (after general auto)
 
 **What it does:**
-- Automatically detects ONLY Secrets referenced in the workload
-- Ignores ConfigMap changes
-- Useful when you want fine-grained control
+- Like `reloader.stakater.com/auto` but ONLY for Secrets
+- Ignores ConfigMaps
+- Useful when you want to reload on Secret changes but not ConfigMap changes
 
 **Example:**
 ```yaml
@@ -127,33 +124,33 @@ spec:
       containers:
       - name: app
         envFrom:
-        - configMapRef:
-            name: app-config        # ← Will NOT trigger reload
         - secretRef:
-            name: db-credentials    # ← Will trigger reload
+            name: db-creds      # ✅ Triggers reload
+        - configMapRef:
+            name: app-config    # ❌ Does NOT trigger reload
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:38` - `AnnotationSecretAuto`
-- Check logic: `internal/pkg/workload/finder.go:350`
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:329-333`
 
 ---
 
 ### 1.3 `configmap.reloader.stakater.com/auto`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** `"true"` or `"false"`
-**Status:** ⚠️ **Partial** - Requires ReloaderConfig to exist
+**Value:** `"true"`
+**Status:** ✅ **Implemented**
+**Priority:** Second (after general auto)
 
 **What it does:**
-- Automatically detects ONLY ConfigMaps referenced in the workload
-- Ignores Secret changes
-- Useful when you want fine-grained control
+- Like `reloader.stakater.com/auto` but ONLY for ConfigMaps
+- Ignores Secrets
+- Useful when you want to reload on ConfigMap changes but not Secret changes
 
 **Example:**
 ```yaml
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
   name: my-app
   annotations:
@@ -165,31 +162,30 @@ spec:
       - name: app
         envFrom:
         - configMapRef:
-            name: app-config        # ← Will trigger reload
+            name: app-config    # ✅ Triggers reload
         - secretRef:
-            name: db-credentials    # ← Will NOT trigger reload
+            name: db-creds      # ❌ Does NOT trigger reload
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:40` - `AnnotationConfigMapAuto`
-- Check logic: `internal/pkg/workload/finder.go:355`
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:334-338`
 
 ---
 
 ## 2. Named Resource Reload Annotations
 
-These annotations allow you to specify EXACT ConfigMaps or Secrets to watch, even if they're not referenced in the pod spec.
-
 ### 2.1 `secret.reloader.stakater.com/reload`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** Comma-separated list of Secret names or regex patterns
-**Status:** ⚠️ **Partial** - Comma-separated works, regex NOT supported
+**Value:** Comma-separated Secret names (e.g., `"secret1,secret2,secret3"`)
+**Status:** ✅ **Implemented** (exact match only, no regex)
+**Priority:** Third
 
 **What it does:**
-- Watches specific Secrets by name
-- Can watch Secrets that aren't referenced in pod spec
-- Original Reloader supports regex patterns like `"secret-.*"`
+- Watches ONLY the explicitly named Secrets
+- Supports multiple Secrets (comma-separated)
+- Exact name matching only (no wildcards or regex)
+- Does NOT require the Secret to be referenced in pod spec
 
 **Example:**
 ```yaml
@@ -198,7 +194,7 @@ kind: Deployment
 metadata:
   name: my-app
   annotations:
-    secret.reloader.stakater.com/reload: "db-creds,api-keys,oauth-token"
+    secret.reloader.stakater.com/reload: "db-credentials,api-keys,tls-cert"
 spec:
   template:
     spec:
@@ -208,87 +204,81 @@ spec:
         - name: DB_PASSWORD
           valueFrom:
             secretKeyRef:
-              name: db-creds        # ← Will trigger reload
+              name: db-credentials  # ✅ Triggers reload
               key: password
-        # Note: api-keys and oauth-token might not be in pod spec!
-        # But changes will still trigger reload
+        # api-keys and tls-cert also trigger reload even if not referenced here
 ```
 
-**Regex Example (NOT SUPPORTED YET):**
-```yaml
-metadata:
-  annotations:
-    # This would match: secret-prod, secret-dev, secret-staging
-    secret.reloader.stakater.com/reload: "secret-.*"
-```
+**Whitespace handling:**
+- ✅ Spaces are trimmed: `"secret1, secret2"` works correctly
+- ✅ Empty values ignored: `"secret1,,secret3"` works correctly
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:37` - `AnnotationSecretReload`
-- Parse logic: `internal/pkg/util/helpers.go:89` - `ParseCommaSeparatedList()`
-- Check logic: `internal/pkg/workload/finder.go:362-372`
+**Limitations:**
+- ❌ No regex support: `"db-.*"` will NOT match `"db-credentials"`
+- ❌ No wildcards: `"db-*"` will NOT work
+- ❌ Case-sensitive exact match only
 
-**Missing:** Regex pattern matching
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:342-351`
+- Parser: `internal/pkg/util/helpers.go:135` (ParseCommaSeparatedList)
 
 ---
 
 ### 2.2 `configmap.reloader.stakater.com/reload`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** Comma-separated list of ConfigMap names or regex patterns
-**Status:** ⚠️ **Partial** - Comma-separated works, regex NOT supported
+**Value:** Comma-separated ConfigMap names
+**Status:** ✅ **Implemented** (exact match only, no regex)
+**Priority:** Third
 
 **What it does:**
-- Watches specific ConfigMaps by name
-- Can watch ConfigMaps that aren't referenced in pod spec
-- Original Reloader supports regex patterns like `"config-.*"`
+- Watches ONLY the explicitly named ConfigMaps
+- Same behavior as `secret.reloader.stakater.com/reload` but for ConfigMaps
 
 **Example:**
 ```yaml
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
-  name: logging-agent
+  name: my-app
   annotations:
-    configmap.reloader.stakater.com/reload: "fluent-config,log-filters"
+    configmap.reloader.stakater.com/reload: "app-config,feature-flags"
 spec:
   template:
     spec:
       containers:
-      - name: fluentd
-        volumeMounts:
-        - name: config
-          mountPath: /fluentd/etc
-      volumes:
-      - name: config
-        configMap:
-          name: fluent-config    # ← Will trigger reload
+      - name: app
+        envFrom:
+        - configMapRef:
+            name: app-config  # ✅ Triggers reload
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:39` - `AnnotationConfigMapReload`
-- Parse logic: `internal/pkg/util/helpers.go:89` - `ParseCommaSeparatedList()`
-- Check logic: `internal/pkg/workload/finder.go:362-372`
-
-**Missing:** Regex pattern matching
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:342-351`
 
 ---
 
 ## 3. Search and Match Annotations
 
-These annotations provide an opt-in mechanism where workloads only reload for resources that are explicitly tagged.
-
-### 3.1 `reloader.stakater.com/search`
+### 3.1 `reloader.stakater.com/search` (on Workload)
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** `"true"` or `"false"`
+**Value:** `"true"`
 **Status:** ✅ **Implemented**
+**Priority:** Fourth (lowest)
 
 **What it does:**
-- Enables "search mode" for the workload
-- In search mode, the workload ONLY reloads if the changed resource has `reloader.stakater.com/match: "true"`
-- Useful for selective reloading in environments with many ConfigMaps/Secrets
+- Enables "search mode" on the workload
+- Workload will ONLY reload if:
+  1. Resource has `reloader.stakater.com/match: "true"` annotation
+  2. Resource is actually referenced in pod spec
+  3. Both conditions must be met
 
-**Example:**
+**Use case:**
+- Selective reloading in multi-tenant environments
+- Only reload when specific ConfigMaps/Secrets are marked as important
+
+**Example - Workload:**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -303,211 +293,133 @@ spec:
       - name: app
         envFrom:
         - configMapRef:
-            name: app-config        # Only reloads if app-config has match annotation
+            name: app-config
         - configMapRef:
-            name: static-config     # Ignores changes to static-config
+            name: static-config
+```
 
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:355-365`
+
+---
+
+### 3.2 `reloader.stakater.com/match` (on ConfigMap/Secret)
+
+**Applied to:** ConfigMap, Secret
+**Value:** `"true"`
+**Status:** ✅ **Implemented**
+**Works with:** `reloader.stakater.com/search`
+
+**What it does:**
+- Marks a ConfigMap/Secret as "important"
+- Only triggers reload for workloads with `search: "true"`
+- Resource must be referenced in the workload
+
+**Example - Resources:**
+```yaml
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
   annotations:
-    reloader.stakater.com/match: "true"  # This will trigger reload
+    reloader.stakater.com/match: "true"  # ✅ Triggers reload
 data:
   key: value
-
 ---
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: static-config
-  # No match annotation - changes ignored even though it's referenced
+  # No match annotation - changes ignored even if referenced
 data:
   key: value
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:29` - `AnnotationSearch`
-- **Not implemented in finder.go**
+**Result:**
+- ✅ Changes to `app-config` → Reload triggered
+- ❌ Changes to `static-config` → No reload (no match annotation)
+
+**Implementation:**
+- Code: `internal/pkg/workload/finder.go:359`
 
 ---
 
-### 3.2 `reloader.stakater.com/match`
-
-**Applied to:** ConfigMap, Secret
-**Value:** `"true"` or `"false"`
-**Status:** ✅ **Implemented**
-
-**What it does:**
-- Tags a ConfigMap or Secret as eligible for reload
-- Only works when workload has `reloader.stakater.com/search: "true"`
-- Provides explicit opt-in for resources
-
-**Use Case:**
-You have 10 ConfigMaps referenced in your deployment, but only 2 should trigger reload.
-
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:30` - `AnnotationMatch`
-- Implementation: `internal/pkg/workload/finder.go:378-390` - `shouldReloadFromAnnotations()`
-
----
-
-## 4. Ignore and Exclusion Annotations
-
-These annotations prevent reloads from being triggered.
+## 4. Ignore Annotations
 
 ### 4.1 `reloader.stakater.com/ignore` (on ConfigMap/Secret)
 
 **Applied to:** ConfigMap, Secret
-**Value:** `"true"` or `"false"`
-**Status:** ✅ **Fully Supported**
+**Value:** `"true"`
+**Status:** ✅ **Implemented**
 
 **What it does:**
 - GLOBAL ignore flag - prevents ANY workload from reloading when this resource changes
-- Useful for static ConfigMaps/Secrets that never require reload
-- Works on both update and create events
+- Works for both CRD-based and annotation-based configurations
+- Checked before any reload logic
 
 **Example:**
 ```yaml
 apiVersion: v1
-kind: ConfigMap
+kind: Secret
 metadata:
-  name: static-readonly-config
+  name: service-account-token
   annotations:
-    reloader.stakater.com/ignore: "true"  # No workload will reload when this changes
+    reloader.stakater.com/ignore: "true"  # Never triggers reloads
 data:
-  timezone: "UTC"
-  locale: "en_US"
+  token: xyz...
 ```
+
+**Use cases:**
+- ✅ Service account tokens
+- ✅ CA certificates
+- ✅ System-managed resources
+- ✅ Static configuration that never changes
 
 **Implementation:**
-- Checked on ReloaderConfig objects: `internal/pkg/workload/finder.go:72`
-- Checked on Secret updates: `internal/controller/reconciler_events.go:69`
-- Checked on ConfigMap updates: `internal/controller/reconciler_events.go:138`
-- Checked on Secret creates: `internal/controller/reconciler_events.go:207`
-- Checked on ConfigMap creates: `internal/controller/reconciler_events.go:300`
+- Annotation-based check: `internal/pkg/workload/finder.go:72`
+- CRD-based check: `internal/controller/reconciler_events.go:44`
+- Constant: `internal/pkg/util/helpers.go:32`
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:32` - `AnnotationIgnore`
-- E2E Tests: `test/e2e/annotation_test.go:267,341`
-
----
-
-### 4.2 `configmaps.exclude.reloader.stakater.com/reload`
-
-**Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** Comma-separated list of ConfigMap names
-**Status:** ❌ **Missing**
-
-**What it does:**
-- Workload-specific exclusion list
-- Even if ConfigMap is referenced, changes won't trigger reload
-- Useful when using `auto: true` but want to exclude specific ConfigMaps
-
-**Example:**
+**Also supported in CRD:**
 ```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    reloader.stakater.com/auto: "true"
-    configmaps.exclude.reloader.stakater.com/reload: "static-config,readonly-config"
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
 spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - configMapRef:
-            name: app-config        # ← Will trigger reload
-        - configMapRef:
-            name: static-config     # ← Will NOT trigger reload (excluded)
-        - configMapRef:
-            name: readonly-config   # ← Will NOT trigger reload (excluded)
+  ignoreResources:
+    - kind: Secret
+      name: service-account-token
+      namespace: default
 ```
 
-**Code Location:**
-- **Not defined in constants**
-- **Not implemented**
-
-**Recommended Constant:** `AnnotationConfigMapExclude = "configmaps.exclude.reloader.stakater.com/reload"`
-
 ---
 
-### 4.3 `secrets.exclude.reloader.stakater.com/reload`
+### 4.2 `reloader.stakater.com/ignore` (on Workload)
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
-**Value:** Comma-separated list of Secret names
-**Status:** ❌ **Missing**
+**Value:** `"true"`
+**Status:** ❌ **Not Implemented**
 
-**What it does:**
-- Workload-specific exclusion list for Secrets
-- Even if Secret is referenced, changes won't trigger reload
-- Useful when using `auto: true` but want to exclude specific Secrets
-
-**Example:**
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: my-app
-  annotations:
-    reloader.stakater.com/auto: "true"
-    secrets.exclude.reloader.stakater.com/reload: "ca-cert,service-account-token"
-spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - secretRef:
-            name: db-credentials    # ← Will trigger reload
-        - secretRef:
-            name: ca-cert           # ← Will NOT trigger reload (excluded)
-```
-
-**Code Location:**
-- **Not defined in constants**
-- **Not implemented**
-
-**Recommended Constant:** `AnnotationSecretExclude = "secrets.exclude.reloader.stakater.com/reload"`
+**Note:** This annotation is NOT implemented for workloads. Use ignore on the ConfigMap/Secret instead.
 
 ---
 
-## 5. Reload Strategy Annotations
-
-These annotations control HOW the reload is triggered using a **two-level strategy system**:
-1. **Rollout Strategy**: HOW to deploy the change (rollout vs restart)
-2. **Reload Strategy**: HOW to modify the template when using rollout (env-vars vs annotations)
+## 5. Strategy Annotations
 
 ### 5.1 `reloader.stakater.com/rollout-strategy`
 
 **Applied to:** Deployment, StatefulSet, DaemonSet
 **Value:** `"rollout"` or `"restart"`
-**Status:** ✅ **Fully Implemented**
+**Status:** ✅ **Implemented**
+**Default:** `rollout`
 
 **What it does:**
-- Controls the deployment mechanism for changes
-- This is the **first-level decision**: HOW to deploy
+- Controls HOW the operator triggers pod restarts
+- Two strategies:
+  - `rollout`: Modify pod template (uses reload strategy)
+  - `restart`: Delete pods directly (GitOps-friendly)
 
-**Rollout Strategies:**
-
-1. **`rollout` (default)** - ✅ Supported
-   - Modifies pod template to trigger Kubernetes rolling update
-   - Template modification is determined by the reload strategy (see below)
-   - Standard Kubernetes deployment behavior
-   - Changes are visible in deployment spec
-
-2. **`restart`** - ✅ Supported
-   - Deletes pods directly WITHOUT modifying pod template
-   - **Most GitOps-friendly** (no template changes at all)
-   - Equivalent to `kubectl rollout restart`
-   - Kubernetes recreates pods with updated ConfigMap/Secret data
-   - No drift detection in ArgoCD/Flux
-
-**Example:**
+**Strategy: `rollout`** (Default)
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
@@ -515,88 +427,70 @@ metadata:
   name: my-app
   annotations:
     reloader.stakater.com/auto: "true"
-    reloader.stakater.com/rollout-strategy: "restart"  # Delete pods without template changes
+    reloader.stakater.com/rollout-strategy: "rollout"  # Default
+spec:
+  # ...
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:32` - `AnnotationRolloutStrategy`
-- Constants: `internal/pkg/util/helpers.go:53-56` - Rollout strategy values
-- Used in: `internal/pkg/workload/finder.go:238,267,296`
-- Applied in: `internal/pkg/workload/updater.go` - TriggerReload method
-- Restart implementation: `internal/pkg/workload/updater.go` - `restartWorkloadPods()` function
+**Behavior:**
+- Modifies pod template to trigger Kubernetes rolling update
+- Uses reload strategy (env-vars or annotations) to modify template
+- Changes visible in deployment history
+- Standard Kubernetes behavior
+
+**Strategy: `restart`** (GitOps-friendly)
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: my-app
+  annotations:
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/rollout-strategy: "restart"
+spec:
+  # ...
+```
+
+**Behavior:**
+- Deletes pods directly without modifying template
+- Equivalent to `kubectl rollout restart`
+- No template changes (ArgoCD/Flux won't detect drift)
+- Most GitOps-friendly option
+
+**Implementation:**
+- Code: `internal/pkg/util/helpers.go:73-84` (GetDefaultRolloutStrategy)
+- Constant: `internal/pkg/util/helpers.go:33`
 
 ---
 
-### 5.2 `reloader.stakater.com/reload-strategy` (CRD-only)
+### 5.2 Reload Strategy (env-vars vs annotations)
 
-**Applied to:** ReloaderConfig CRD (not supported as workload annotation)
-**Value:** `"env-vars"` or `"annotations"`
-**Status:** ✅ **Fully Implemented**
+**Note:** Reload strategy is NOT configured via annotations in annotation-based mode.
+It's only available in CRD-based configuration (`spec.reloadStrategy`).
 
-**What it does:**
-- Controls HOW the pod template is modified when rollout strategy is `"rollout"`
-- Only applies when rollout strategy is `"rollout"` (ignored when `"restart"`)
-- This is the **second-level decision**: HOW to modify the template
+In annotation mode, the operator uses `env-vars` strategy by default when `rolloutStrategy: "rollout"`.
 
-**Reload Strategies:**
-
-1. **`env-vars` (default)** - ✅ Supported
-   - Adds/updates resource-specific environment variable: `STAKATER_<RESOURCE_NAME>_<TYPE>=<hash>`
-   - Examples: `STAKATER_DB_CREDENTIALS_SECRET=abc123`, `STAKATER_APP_CONFIG_CONFIGMAP=def456`
-   - Value is the resource's hash (not timestamp)
-   - Forces pod restart via spec change
-   - Works with all Kubernetes versions
-   - Template modification visible in deployment spec
-   - **No annotations added** - only environment variables
-
-2. **`annotations`** - ✅ Supported
-   - Updates pod template annotations:
-     - `reloader.stakater.com/last-reload=<timestamp>`
-     - `reloader.stakater.com/last-reloaded-from=<json>`
-   - GitOps-friendly when using `rollout` (ArgoCD/Flux can ignore annotation changes)
-   - Cleaner pod spec - no environment variable pollution
-   - **No environment variables added** - only annotations
-   - **Note:** For maximum GitOps compatibility, use `rollout-strategy: restart` instead
-
-**Example (CRD):**
+**CRD Example:**
 ```yaml
 apiVersion: reloader.stakater.com/v1alpha1
 kind: ReloaderConfig
-metadata:
-  name: my-app-reloader
 spec:
-  rolloutStrategy: rollout      # Modify template
-  reloadStrategy: annotations   # Modify using annotations
+  rolloutStrategy: rollout  # Use rollout
+  reloadStrategy: annotations  # Modify template using annotations (not env vars)
   targets:
     - kind: Deployment
       name: my-app
 ```
 
-**Strategy Combinations:**
-
-| Rollout Strategy | Reload Strategy | Result |
-|------------------|-----------------|--------|
-| `rollout` | `env-vars` | Modify template with env var (default) |
-| `rollout` | `annotations` | Modify template with annotation |
-| `restart` | (any) | Delete pods directly (reload strategy ignored) |
-
-**Code Location:**
-- Used in CRD: `api/v1alpha1/reloaderconfig_types.go`
-- Applied in: `internal/pkg/workload/updater.go` - TriggerReload method
-- Env-vars implementation: `internal/pkg/workload/updater.go` - `reloadDeployment()` etc.
-- Annotations implementation: `internal/pkg/workload/updater.go` - `reloadDeployment()` etc.
-
 ---
 
 ## 6. Pause Period Annotations
-
-These annotations prevent reload storms when multiple resources change quickly.
 
 ### 6.1 `deployment.reloader.stakater.com/pause-period`
 
 **Applied to:** Deployment
 **Value:** Duration string (e.g., `"5m"`, `"1h"`, `"30s"`)
-**Status:** 🐛 **Broken** - Set but never enforced
+**Status:** ✅ **Implemented** (Fixed 2025-11-06)
 
 **What it does:**
 - Prevents multiple reloads within the specified duration
@@ -614,358 +508,324 @@ metadata:
     reloader.stakater.com/auto: "true"
     deployment.reloader.stakater.com/pause-period: "5m"
 spec:
-  template:
-    spec:
-      containers:
-      - name: app
-        envFrom:
-        - configMapRef:
-            name: app-config
-        - secretRef:
-            name: db-credentials
-
-# Timeline:
-# 10:00 - app-config changes → Reload triggered, pause until 10:05
-# 10:02 - db-credentials changes → Ignored (still paused)
-# 10:04 - app-config changes again → Ignored (still paused)
-# 10:06 - app-config changes → Reload triggered, pause until 10:11
+  # ...
 ```
 
-**Bug Details:**
-- `PausedUntil` timestamp IS set in `updateTargetStatus()` (controller.go:930, 956)
-- `IsPaused()` check EXISTS in `executeReloads()` (controller.go:571)
-- BUT: Logic has a bug - pause not enforced correctly
-- **Test failing:** `test/e2e/edge_cases_test.go:293`
+**Timeline example:**
+```
+10:00 - app-config changes → ✅ Reload triggered, paused until 10:05
+10:02 - db-secret changes → ❌ Ignored (still paused)
+10:04 - feature-flags changes → ❌ Ignored (still paused)
+10:06 - tls-cert changes → ✅ Reload triggered, paused until 10:11
+```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:43` - `AnnotationDeploymentPausePeriod`
-- Read: `internal/pkg/workload/finder.go:241`
-- Set: `internal/controller/reloaderconfig_controller.go:926-931`
-- Check: `internal/controller/reloaderconfig_controller.go:571-583`
-- **Bug location:** `internal/pkg/workload/updater.go` - IsPaused() implementation
+**Duration format:**
+- Valid: `"5m"`, `"1h"`, `"30s"`, `"2h30m"`, `"90s"`
+- Invalid: `"5 minutes"`, `"1 hour"`, `"5"`
+
+**Use cases:**
+- ✅ Prevent cascading restarts in microservices
+- ✅ Batch multiple ConfigMap/Secret updates
+- ✅ Reduce reload frequency in CI/CD pipelines
+
+**Implementation:**
+- Code: `internal/pkg/workload/updater.go:501-534` (IsPaused function)
+- Uses annotation `reloader.stakater.com/last-reload` to track last reload time
+- Constant: `internal/pkg/util/helpers.go:44`
 
 ---
 
 ### 6.2 `statefulset.reloader.stakater.com/pause-period`
 
 **Applied to:** StatefulSet
-**Value:** Duration string (e.g., `"5m"`, `"1h"`, `"30s"`)
-**Status:** 🐛 **Broken** - Same bug as Deployment
+**Value:** Duration string
+**Status:** ✅ **Implemented** (Fixed 2025-11-06)
 
 **What it does:**
 - Same as `deployment.reloader.stakater.com/pause-period` but for StatefulSets
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:44` - `AnnotationStatefulSetPausePeriod`
-- Read: `internal/pkg/workload/finder.go:270`
+**Example:**
+```yaml
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: redis
+  annotations:
+    configmap.reloader.stakater.com/reload: "redis-config"
+    statefulset.reloader.stakater.com/pause-period: "10m"
+spec:
+  # ...
+```
+
+**Implementation:**
+- Code: `internal/pkg/workload/updater.go:501-534`
+- Constant: `internal/pkg/util/helpers.go:45`
 
 ---
 
 ### 6.3 `daemonset.reloader.stakater.com/pause-period`
 
 **Applied to:** DaemonSet
-**Value:** Duration string (e.g., `"5m"`, `"1h"`, `"30s"`)
-**Status:** 🐛 **Broken** - Same bug as Deployment
+**Value:** Duration string
+**Status:** ✅ **Implemented** (Fixed 2025-11-06)
 
 **What it does:**
 - Same as `deployment.reloader.stakater.com/pause-period` but for DaemonSets
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:45` - `AnnotationDaemonSetPausePeriod`
-- Read: `internal/pkg/workload/finder.go:299`
+**Example:**
+```yaml
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: log-collector
+  annotations:
+    secret.reloader.stakater.com/reload: "logging-credentials"
+    daemonset.reloader.stakater.com/pause-period: "15m"
+spec:
+  # ...
+```
+
+**Implementation:**
+- Code: `internal/pkg/workload/updater.go:501-534`
+- Constant: `internal/pkg/util/helpers.go:46`
 
 ---
 
-### 6.4 `deployment.reloader.stakater.com/paused-at`
+## 7. Tracking Annotations (Auto-Set)
 
-**Applied to:** Deployment (auto-set by operator)
+These annotations are set automatically by the operator. Do NOT set them manually.
+
+### 7.1 `reloader.stakater.com/last-reload`
+
+**Applied to:** Deployment, StatefulSet, DaemonSet (auto-set)
 **Value:** RFC3339 timestamp
-**Status:** ❌ **Missing** - Not used
+**Status:** 📝 **Auto-Set by Operator**
 
 **What it does:**
-- Automatically set by Reloader to track when deployment was paused
-- Used for observability and debugging
-- Should NOT be set manually
+- Automatically set by operator when workload is reloaded
+- Used for pause period calculations
+- Shows when the last reload occurred
 
-**Example:**
+**Example (auto-set by operator):**
 ```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-app
   annotations:
-    deployment.reloader.stakater.com/pause-period: "5m"
-    deployment.reloader.stakater.com/paused-at: "2025-11-05T10:00:00Z"  # Auto-set
+    reloader.stakater.com/auto: "true"
+    reloader.stakater.com/last-reload: "2025-11-17T10:30:45Z"  # Auto-set
+spec:
+  # ...
 ```
 
-**Code Location:**
-- **Not defined in constants**
-- **Not implemented**
+**Implementation:**
+- Code: `internal/pkg/workload/updater.go:542-557` (setLastReloadAnnotation)
+- Constant: `internal/pkg/util/helpers.go:34`
 
 ---
 
-## 7. Internal/Tracking Annotations
+### 7.2 `reloader.stakater.com/last-reloaded-from`
 
-These annotations are set by Reloader for tracking and are not meant to be manually configured.
-
-### 7.1 `reloader.stakater.com/last-hash`
-
-**Applied to:** ConfigMap, Secret (auto-set by operator)
-**Value:** SHA256 hash string
-**Status:** ✅ **Implemented**
+**Applied to:** Deployment, StatefulSet, DaemonSet (auto-set)
+**Value:** JSON string with reload source
+**Status:** 📝 **Auto-Set by Operator**
 
 **What it does:**
-- Stores the last known hash of the resource data
-- Used for change detection (only data changes trigger reload, not metadata)
-- Automatically managed by the operator
+- Records which ConfigMap/Secret triggered the reload
+- Useful for auditing and debugging
 
-**Example:**
+**Example (auto-set by operator):**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  annotations:
+    reloader.stakater.com/last-reloaded-from: '{"kind":"Secret","name":"db-credentials","namespace":"default","hash":"a1b2c3"}'
+```
+
+**Implementation:**
+- Code: `internal/pkg/util/helpers.go:115-132` (CreateReloadSourceAnnotation)
+- Constant: `internal/pkg/util/helpers.go:35`
+
+---
+
+### 7.3 `reloader.stakater.com/last-hash` (on ConfigMap/Secret)
+
+**Applied to:** ConfigMap, Secret (auto-set)
+**Value:** Hash of resource data
+**Status:** 📝 **Auto-Set by Operator**
+
+**What it does:**
+- Operator sets this to track resource versions
+- Used internally to detect changes
+- You can see it but should not modify it
+
+**Example (auto-set by operator):**
 ```yaml
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: app-config
   annotations:
-    reloader.stakater.com/last-hash: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    reloader.stakater.com/last-hash: "a1b2c3d4e5f6"  # Auto-set by operator
 data:
   key: value
 ```
 
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:27` - `AnnotationLastHash`
-- Get: `internal/controller/reloaderconfig_controller.go:474`
-- Update: `internal/controller/reloaderconfig_controller.go:735-760`
-
-**Note:** Original Reloader uses SHA1, Reloader-Operator uses SHA256
-
----
-
-### 7.2 `reloader.stakater.com/last-reload`
-
-**Applied to:** Deployment, StatefulSet, DaemonSet (auto-set by operator)
-**Value:** RFC3339 timestamp
-**Status:** ⚠️ **Partial** - Used in annotations strategy only
-
-**What it does:**
-- Tracks when the workload was last reloaded
-- Used in `annotations` reload strategy
-- Can be used for debugging and audit trail
-
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:33` - `AnnotationLastReload`
-- **Used in updater but not documented**
-
----
-
-### 7.3 `reloader.stakater.com/resource-hash`
-
-**Applied to:** Deployment, StatefulSet, DaemonSet (auto-set by operator)
-**Value:** SHA256 hash string
-**Status:** ⚠️ **Partial** - Defined but usage unclear
-
-**What it does:**
-- Stores hash of the triggering resource
-- Used for tracking which resource caused the reload
-
-**Code Location:**
-- Constant: `internal/pkg/util/helpers.go:34` - `AnnotationResourceHash`
-- **Defined but not clearly used**
-
----
-
-### 7.4 `reloader.stakater.com/last-reloaded-from`
-
-**Applied to:** Deployment, StatefulSet, DaemonSet (auto-set by original Reloader)
-**Value:** JSON metadata about the reload trigger
-**Status:** ❌ **Missing**
-
-**What it does:**
-- Contains detailed JSON metadata about what triggered the reload
-- Includes: resource kind, name, namespace, timestamp, strategy used
-
-**Example:**
-```json
-{
-  "kind": "Secret",
-  "name": "db-credentials",
-  "namespace": "production",
-  "triggeredAt": "2025-11-05T10:30:00Z",
-  "strategy": "annotations"
-}
-```
-
-**Code Location:**
-- **Not defined in constants**
-- **Not implemented**
+**Implementation:**
+- Constant: `internal/pkg/util/helpers.go:28`
 
 ---
 
 ## 8. Summary Table
 
-| Annotation | Applied To | Status | Priority to Fix |
-|------------|-----------|--------|----------------|
-| `reloader.stakater.com/auto` | Workload | ⚠️ Partial | **HIGH** |
-| `secret.reloader.stakater.com/auto` | Workload | ⚠️ Partial | **HIGH** |
-| `configmap.reloader.stakater.com/auto` | Workload | ⚠️ Partial | **HIGH** |
-| `secret.reloader.stakater.com/reload` | Workload | ⚠️ Partial (no regex) | **MEDIUM** |
-| `configmap.reloader.stakater.com/reload` | Workload | ⚠️ Partial (no regex) | **MEDIUM** |
-| `reloader.stakater.com/search` | Workload | ✅ Implemented | **MEDIUM** |
-| `reloader.stakater.com/match` | ConfigMap/Secret | ✅ Implemented | **MEDIUM** |
-| `reloader.stakater.com/ignore` | ConfigMap/Secret | ⚠️ Partial | **HIGH** |
-| `configmaps.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
-| `secrets.exclude.reloader.stakater.com/reload` | Workload | ❌ Missing | **MEDIUM** |
-| `reloader.stakater.com/rollout-strategy` | Workload | ✅ Implemented | **LOW** |
-| `deployment.reloader.stakater.com/pause-period` | Deployment | 🐛 Broken | **CRITICAL** |
-| `statefulset.reloader.stakater.com/pause-period` | StatefulSet | 🐛 Broken | **CRITICAL** |
-| `daemonset.reloader.stakater.com/pause-period` | DaemonSet | 🐛 Broken | **CRITICAL** |
-| `deployment.reloader.stakater.com/paused-at` | Deployment | ❌ Missing | **LOW** |
-| `reloader.stakater.com/last-hash` | ConfigMap/Secret | ✅ Implemented | - |
-| `reloader.stakater.com/last-reload` | Workload | ⚠️ Partial | **LOW** |
-| `reloader.stakater.com/resource-hash` | Workload | ⚠️ Partial | **LOW** |
-| `reloader.stakater.com/last-reloaded-from` | Workload | ❌ Missing | **LOW** |
+### Workload Annotations
+
+| Annotation | Applied To | Values | Status | Priority |
+|------------|------------|--------|--------|----------|
+| `reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"`, `"false"` | ✅ Implemented | Highest |
+| `secret.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
+| `configmap.reloader.stakater.com/auto` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | High |
+| `secret.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
+| `configmap.reloader.stakater.com/reload` | Deployment/StatefulSet/DaemonSet | Comma-separated names | ✅ Implemented (no regex) | Medium |
+| `reloader.stakater.com/search` | Deployment/StatefulSet/DaemonSet | `"true"` | ✅ Implemented | Low |
+| `reloader.stakater.com/rollout-strategy` | Deployment/StatefulSet/DaemonSet | `"rollout"`, `"restart"` | ✅ Implemented | - |
+| `deployment.reloader.stakater.com/pause-period` | Deployment | Duration (e.g., `"5m"`) | ✅ Implemented | - |
+| `statefulset.reloader.stakater.com/pause-period` | StatefulSet | Duration | ✅ Implemented | - |
+| `daemonset.reloader.stakater.com/pause-period` | DaemonSet | Duration | ✅ Implemented | - |
+| `reloader.stakater.com/last-reload` | Deployment/StatefulSet/DaemonSet | RFC3339 timestamp | 📝 Auto-set | - |
+| `reloader.stakater.com/last-reloaded-from` | Deployment/StatefulSet/DaemonSet | JSON string | 📝 Auto-set | - |
+
+### Resource Annotations
+
+| Annotation | Applied To | Values | Status | Notes |
+|------------|------------|--------|--------|-------|
+| `reloader.stakater.com/match` | ConfigMap/Secret | `"true"` | ✅ Implemented | Works with search mode |
+| `reloader.stakater.com/ignore` | ConfigMap/Secret | `"true"` | ✅ Implemented | Global ignore |
+| `reloader.stakater.com/last-hash` | ConfigMap/Secret | Hash string | 📝 Auto-set | Internal tracking |
+
+### Not Implemented
+
+| Annotation | Status | Notes |
+|------------|--------|-------|
+| `configmaps.exclude.reloader.stakater.com/reload` | ❌ Not implemented | Use CRD `ignoreResources` instead |
+| `secrets.exclude.reloader.stakater.com/reload` | ❌ Not implemented | Use CRD `ignoreResources` instead |
+| Regex/wildcard patterns in reload annotations | ❌ Not implemented | Only exact string matching |
 
 ---
 
-## 9. Implementation Statistics
+## 9. Migration from Original Reloader
 
-### By Status
-- ✅ **Fully Implemented:** 4 annotations (21%)
-- ⚠️ **Partially Implemented:** 8 annotations (42%)
-- 🐛 **Broken:** 3 annotations (16%)
-- ❌ **Missing:** 4 annotations (21%)
+### Compatibility Status
 
-### By Priority
-- **CRITICAL:** 3 annotations (pause period bug)
-- **HIGH:** 4 annotations (auto annotations, ignore)
-- **MEDIUM:** 5 annotations (named reload implemented, search/match implemented, exclusions missing)
-- **LOW:** 7 annotations (tracking, metadata, restart strategy)
+**100% backward compatible** with original Reloader annotation-based configuration.
 
----
+All annotations from original Reloader work exactly the same way, with these exceptions:
 
-## 10. Quick Reference: Which Annotation Should I Use?
+**Differences:**
 
-### Use Case: Auto-reload everything
+| Feature | Original Reloader | Reloader Operator | Migration |
+|---------|------------------|-------------------|-----------|
+| Regex patterns in reload lists | ✅ Supported | ❌ Not supported | Use exact names or switch to CRD |
+| Exclusion annotations | ✅ Supported | ❌ Not supported | Use `reloader.stakater.com/ignore` or CRD `ignoreResources` |
+| CronJob/Rollout/DeploymentConfig | ✅ Supported | ❌ Not supported | Not yet implemented |
+
+**Migration Steps:**
+
+1. **No changes needed** - Most deployments work as-is
+2. **If using regex** - Replace with exact names or migrate to CRD
+3. **If using exclusions** - Switch to ignore annotation or CRD
+
+**Example migration:**
+
+Original Reloader (with regex):
 ```yaml
-reloader.stakater.com/auto: "true"
+annotations:
+  secret.reloader.stakater.com/reload: "db-.*,api-.*"
 ```
-**Status:** ⚠️ Requires ReloaderConfig
 
----
-
-### Use Case: Reload only when specific Secrets change
+Reloader Operator (exact names):
 ```yaml
-secret.reloader.stakater.com/reload: "db-creds,api-keys"
+annotations:
+  secret.reloader.stakater.com/reload: "db-credentials,db-config,api-keys,api-tokens"
 ```
-**Status:** ⚠️ Works, but no regex support
 
----
-
-### Use Case: Auto-reload Secrets only, ignore ConfigMaps
+Or use CRD for better management:
 ```yaml
-secret.reloader.stakater.com/auto: "true"
+apiVersion: reloader.stakater.com/v1alpha1
+kind: ReloaderConfig
+spec:
+  watchedResources:
+    secrets:
+      - db-credentials
+      - db-config
+      - api-keys
+      - api-tokens
+  targets:
+    - kind: Deployment
+      name: my-app
 ```
-**Status:** ⚠️ Requires ReloaderConfig
 
 ---
 
-### Use Case: Prevent reload storms
+## Best Practices
+
+### 1. Use Auto-Reload for Simple Cases
 ```yaml
-deployment.reloader.stakater.com/pause-period: "5m"
+annotations:
+  reloader.stakater.com/auto: "true"
 ```
-**Status:** 🐛 Broken - being fixed
 
----
-
-### Use Case: Exclude specific ConfigMaps from auto-reload
+### 2. Use Named Reload for Selective Watching
 ```yaml
-reloader.stakater.com/auto: "true"
-configmaps.exclude.reloader.stakater.com/reload: "static-config"
+annotations:
+  secret.reloader.stakater.com/reload: "db-credentials"
+  configmap.reloader.stakater.com/reload: "app-config"
 ```
-**Status:** ❌ Not implemented yet
 
----
-
-### Use Case: Prevent a ConfigMap from ever triggering reload
-On the ConfigMap itself:
+### 3. Add Pause Periods to Prevent Reload Storms
 ```yaml
-reloader.stakater.com/ignore: "true"
+annotations:
+  reloader.stakater.com/auto: "true"
+  deployment.reloader.stakater.com/pause-period: "5m"
 ```
-**Status:** ⚠️ Only works on ReloaderConfig, not on ConfigMap
 
----
-
-### Use Case: GitOps-friendly reload (avoid ArgoCD drift detection)
+### 4. Use Restart Strategy for GitOps
 ```yaml
-reloader.stakater.com/rollout-strategy: "annotations"
+annotations:
+  reloader.stakater.com/auto: "true"
+  reloader.stakater.com/rollout-strategy: "restart"
 ```
-**Status:** ✅ Works
+
+### 5. Ignore System Resources
+```yaml
+# On ConfigMap/Secret
+annotations:
+  reloader.stakater.com/ignore: "true"
+```
+
+### 6. For Complex Scenarios, Use CRD
+If you need:
+- Multiple targets with different strategies
+- Cross-namespace watching
+- Label-based resource filtering
+- Ignore lists with namespaces
+- Alert configuration
+
+→ Migrate to ReloaderConfig CRD instead of annotations
 
 ---
 
-## 11. Migration Notes
+## Related Documentation
 
-### From Original Reloader to Reloader-Operator
-
-**What works without changes:**
-- ✅ Named reload annotations (`secret.reloader.stakater.com/reload`)
-- ✅ Rollout strategy annotation - `"rollout"` value supported via alias
-- ✅ Restart strategy - works identically (`"restart"` value)
-- ✅ All reload strategies fully backward compatible
-- ✅ Basic functionality
-
-**What requires changes:**
-- ⚠️ Auto annotations need ReloaderConfig CRD created (but work once CRD exists)
-- ⚠️ Regex patterns in reload lists won't work (yet)
-- ⚠️ Ignore annotation on ConfigMaps/Secrets won't work (yet)
-- ⚠️ Pause periods won't work (bug in progress)
-
-**Enhanced features (not in original Reloader):**
-- ✅ `"annotations"` strategy - GitOps-friendly pod template annotation updates
-- ✅ CRD-based configuration for advanced scenarios
-- ✅ Enhanced status tracking and observability
-- ✅ Targeted reload using search/match annotations
-
-**What to avoid:**
-- 🐛 Don't rely on pause period annotations (broken)
-- ❌ Don't use exclusion annotations (not implemented)
+- [README.md](../README.md) - Getting started guide
+- [CRD_SCHEMA.md](CRD_SCHEMA.md) - ReloaderConfig CRD reference
+- [FEATURES.md](FEATURES.md) - Complete feature documentation
+- [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md) - Implementation status
 
 ---
 
-## 12. For Developers: Code Locations
-
-All annotation constants are defined in:
-- **File:** `internal/pkg/util/helpers.go`
-- **Lines:** 26-48
-
-Annotation checking logic:
-- **File:** `internal/pkg/workload/finder.go`
-- **Function:** `shouldReloadFromAnnotations()` (line 320)
-- **Function:** `FindWorkloadsWithAnnotations()` (line 222)
-
-CRD-based configuration:
-- **File:** `api/v1alpha1/reloaderconfig_types.go`
-- **Spec:** Lines 27-70
-
-Controller logic:
-- **File:** `internal/controller/reloaderconfig_controller.go`
-- **Secret reconcile:** Line 366
-- **ConfigMap reconcile:** Line 418
-
----
-
-## 13. Contributing
-
-If you're implementing missing annotations:
-
-1. Add constant to `internal/pkg/util/helpers.go`
-2. Add parsing logic if needed (e.g., comma-separated, regex)
-3. Add check in `internal/pkg/workload/finder.go` - `shouldReloadFromAnnotations()`
-4. Add tests in `internal/pkg/workload/finder_test.go`
-5. Add E2E test in `test/e2e/annotation_test.go`
-6. Update this document with ✅ status
-
----
-
-**Document Version:** 1.0
-**Maintainer:** Reloader-Operator Team
-**Next Review:** After annotation implementation sprint
+**Version**: 2.0
+**Last Updated**: 2025-11-17
+**Maintained by**: Reloader Operator Team
