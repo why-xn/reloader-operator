@@ -8,7 +8,7 @@ This is a Kubernetes Operator rewrite of the [Stakater Reloader](https://github.
 
 **Project Status**: Core Features Complete ✅
 **Current Phase**: Production Ready with Advanced Features
-**Last Updated**: 2025-11-16
+**Last Updated**: 2025-11-17
 
 ### ✅ Completed Phases
 
@@ -68,10 +68,12 @@ This is a Kubernetes Operator rewrite of the [Stakater Reloader](https://github.
 
 #### 4. Documentation
 - ✅ **CRD_SCHEMA.md** - Comprehensive API reference
-- ✅ **Example manifests** in `config/samples/`:
-  - Basic example
-  - Auto-reload example
-  - Advanced features example
+- ✅ **Example manifests** in `config/samples/` (updated 2025-11-17):
+  - `reloader_v1alpha1_reloaderconfig.yaml` - Comprehensive example with all fields
+  - `auto-reload-example.yaml` - Auto-reload mode with GitOps setup
+  - `advanced-example.yaml` - Advanced features (selectors, targeted reload, cross-namespace)
+  - All samples include detailed inline documentation
+  - Operator-level vs CR-level configuration clearly documented
 - ✅ **Mapping guide** - Annotation to CRD conversion
 
 #### 5. Code Generation
@@ -164,13 +166,15 @@ Reloader-Operator/
 - ✅ `restart` strategy - Delete pods without template changes
 - ✅ Workload update executor
 - ✅ Support for Deployment, StatefulSet, DaemonSet
-- ⚠️ Pause period enforcement (implemented but has bugs)
+- ❌ CronJob, Argo Rollout, OpenShift DeploymentConfig (constants defined but not implemented)
+- ✅ Pause period enforcement (fully working for CRD and annotation-based)
 
 **Code Location:**
 - Strategy implementation: `internal/pkg/workload/updater.go`
 - env-vars strategy: Lines 407-441 (dynamic env var naming)
 - annotations strategy: Lines 443-454
 - restart strategy: Lines 282-345
+- Pause period: Lines 495-535 (fixed 2025-11-06, commit 71f8789)
 
 ## Phase 5: Advanced Features ✅
 
@@ -184,13 +188,20 @@ Reloader-Operator/
 - ✅ Leadership election for HA (`--leader-elect` flag)
 - ✅ Metrics endpoint (Prometheus-compatible)
 - ✅ Health probes (readiness/liveness)
-- ❌ Alerting integration (not implemented)
-- ❌ Webhook support (not implemented)
+- ✅ Alerting integration (Slack, Teams, Google Chat, Custom Webhook)
+- ✅ Customizable alert messages with additional context
+- ✅ Ignore/exclude resources (CRD field + annotation)
+  - CRD: `spec.ignoreResources[]` with namespace-specific support
+  - Annotation: `reloader.stakater.com/ignore: "true"`
 
 **Code Location:**
 - Command-line flags: `cmd/main.go:70-99`
 - Namespace filtering: `internal/controller/reloaderconfig_controller.go:1606-1630`
 - Watch predicates: Lines 1676-1754
+- Ignore functionality:
+  - CRD ignore: `reconciler_discovery.go:shouldIgnoreResource()`
+  - Annotation ignore: `reconciler_events.go:44` (checks `reloader.stakater.com/ignore`)
+  - E2E tests: `test/e2e/ignore_test.go`
 
 ## Phase 6: Testing ✅
 
@@ -230,7 +241,7 @@ make e2e-test-reload-on-create-delete  # Create/delete tests
 - ✅ Deployment manifests with resource limits
 - ✅ Service account configuration
 - ✅ Multi-namespace support
-- ⚠️ Helm chart (not created)
+- ✅ Helm chart with comprehensive documentation
 - ⚠️ Migration guide (basic documentation exists)
 - ✅ CI/CD workflow (GitHub Actions)
 
@@ -239,21 +250,23 @@ make e2e-test-reload-on-create-delete  # Create/delete tests
 - CRDs: `config/crd/bases/`
 - RBAC: `config/rbac/`
 - Deployment: `config/manager/`
+- Helm chart: `charts/reloader-operator/` (generated via helmify)
+- Alert integration: `internal/pkg/alerts/`
 
 ## 🚧 Known Issues and Pending Work
 
 ### High Priority
-- 🐛 Pause period enforcement has bugs (test failing)
-- ⚠️ Regex pattern matching in reload annotations not implemented
-
-### Medium Priority
-- ❌ Exclusion annotations (`configmaps.exclude`, `secrets.exclude`) not implemented
+- ❌ Regex/wildcard pattern matching in reload annotations not implemented
+  - Current: Exact string matching only (e.g., `secret.reloader.stakater.com/reload: "my-secret"`)
+  - Missing: Pattern support (e.g., `secret.reloader.stakater.com/reload: "my-secret-.*"`)
+- ❌ Additional workload types not implemented
+  - Missing: CronJob, Argo Rollout, OpenShift DeploymentConfig
+  - Constants defined in code but no actual reload logic implemented
+  - Only Deployment, StatefulSet, DaemonSet are fully supported
 
 ### Low Priority
-- ❌ Alerting integration (Slack, Teams, Google Chat)
-- ❌ Webhook support
-- ❌ Helm chart creation
-- ❌ Advanced observability features
+- ❌ Advanced observability features (custom metrics, tracing)
+- ❌ Operator SDK migration (optional)
 
 ## Technical Decisions
 
@@ -421,31 +434,79 @@ Use only CRDs for new deployments, centralized config management.
 
 ## Feature Comparison with Original Reloader
 
-| Feature | Original Reloader | Reloader Operator | Status |
-|---------|------------------|-------------------|--------|
-| Annotation-based reload | ✅ | ✅ | Full compatibility |
-| Auto-reload mode | ✅ | ✅ | Works |
-| Named resource reload | ✅ | ✅ | Works (no regex yet) |
-| Search & match mode | ✅ | ✅ | Works |
-| Reload strategies | ✅ | ✅ | Enhanced with `annotations` strategy |
-| Resource label selector | ✅ | ✅ | Fully implemented |
-| Namespace selector | ✅ | ✅ | Fully implemented |
-| Namespace ignore list | ✅ | ✅ | Fully implemented |
-| Reload on create | ✅ | ✅ | Fully implemented |
-| Reload on delete | ✅ | ✅ | Fully implemented |
-| Pause period | ✅ | 🐛 | Has bugs |
-| CRD-based config | ❌ | ✅ | New feature |
-| Exclusion annotations | ✅ | ❌ | Not implemented |
-| Regex patterns | ✅ | ❌ | Not implemented |
-| Alerting | ✅ | ❌ | Not implemented |
+| Feature                            | Original Reloader | Reloader Operator | Status |
+|------------------------------------|------------------|-------------------|--------|
+| Annotation-based reload            | ✅ | ✅ | Full compatibility |
+| Auto-reload mode                   | ✅ | ✅ | Works |
+| Named resource reload              | ✅ | ✅ | Works (no regex yet) |
+| Search & match mode                | ✅ | ✅ | Works |
+| Reload strategies                  | ✅ | ✅ | Enhanced with `annotations` strategy |
+| Resource label selector            | ✅ | ✅ | Fully implemented |
+| Namespace selector                 | ✅ | ✅ | Fully implemented |
+| Namespace ignore list              | ✅ | ✅ | Fully implemented |
+| Reload on create                   | ✅ | ✅ | Fully implemented |
+| Reload on delete                   | ✅ | ✅ | Fully implemented |
+| Pause period                       | ✅ | ✅ | Fully implemented (CRD + annotation) |
+| CRD-based config                   | ❌ | ✅ | New feature |
+| Ignore/exclude resources           | ✅ | ✅ | Fully implemented (CRD + annotation) |
+| Regex patterns                     | ✅ | ❌ | Not implemented (exact match only) |
+| Workload types                     | ✅ (6 types) | ⚠️ (3 types) | Only Deployment, StatefulSet, DaemonSet |
+| CronJob support                    | ✅ | ❌ | Not implemented |
+| Argo Rollout support               | ✅ | ❌ | Not implemented |
+| Openshift DeploymentConfig support | ✅ | ❌ | Not implemented |
+| Alerting                           | ✅ | ✅ | Fully implemented (4 sinks) |
+| Helm chart                         | ✅ | ✅ | Both have Helm charts |
 
 ---
 
-**Current Status**: Production Ready with Core Features ✅
+**Current Status**: Production Ready with Advanced Features ✅
 **Next Steps**:
-1. Fix pause period bug
-2. Implement exclusion annotations
-3. Add regex pattern support
-4. Consider alerting integration
+1. Implement missing workload types (CronJob, Argo Rollout, OpenShift DeploymentConfig)
+   - Add switch cases in `workload_helpers.go`, `updater.go`, and `finder.go`
+   - Add necessary dependencies (Argo Rollouts CRD, OpenShift API)
+   - Implement pod template extraction for each workload type
+2. Implement regex/wildcard pattern matching for reload annotations
+   - Add pattern matching to `ContainsString` or create new `MatchesPattern` function
+   - Support wildcards (`*`) and regex patterns in annotation values
+3. Enhance observability (custom metrics, distributed tracing)
+4. Performance optimizations for large-scale deployments
+5. Migration tooling from original Reloader to Operator
 
-**Last Updated**: 2025-11-16
+**Last Updated**: 2025-11-17
+
+## Phase 8: Deployment Tools ✅
+
+### What's Been Implemented
+- ✅ **Helm Chart** (v2.0.0)
+  - Generated from Kustomize manifests using helmify
+  - Comprehensive `values.yaml` with 200+ lines of documentation
+  - Production-ready configurations (security contexts, resource limits)
+  - Support for all operator features (alerts, metrics, HA)
+  - Detailed README with installation examples
+  - ServiceMonitor example for Prometheus
+  - Multiple deployment scenarios (production, GitOps, HA)
+
+**Helm Chart Features:**
+- 12 Kubernetes templates (Deployment, RBAC, CRD, Services)
+- Configurable operator arguments via values
+- Security best practices (non-root, read-only filesystem, capabilities dropped)
+- Node scheduling (nodeSelector, tolerations, affinity)
+- Alert integration configuration
+- Metrics server configuration
+- Image pull secrets support
+
+**Alert Integration Features:**
+- 4 alert sinks: Slack, MS Teams, Google Chat, Custom Webhook
+- Customizable alert messages with additional context
+- Configurable via command-line flags or Helm values
+- Async alert sending to avoid blocking reconciliation
+- Comprehensive error handling and logging
+
+**Code Location:**
+- Helm chart: `charts/reloader-operator/`
+- Alert package: `internal/pkg/alerts/`
+  - `alert_manager.go` - Main alert manager
+  - `slack.go` - Slack webhook integration
+  - `teams.go` - MS Teams webhook integration
+  - `gchat.go` - Google Chat webhook integration
+  - `types.go` - Alert interfaces and types
